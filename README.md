@@ -62,7 +62,7 @@ The actual password is never shown to the user. Only the credential name is disp
            │
            ▼
 ┌──────────────────────┐
-│     Windows OS       │
+│     Desktop OS       │
 └──────────────────────┘
 ```
 
