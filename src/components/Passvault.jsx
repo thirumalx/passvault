@@ -5,13 +5,24 @@ import { writeText, clear } from "@tauri-apps/plugin-clipboard-manager";
 import './PassVault.css';
 
 // --- Web Crypto Helpers ---
-const PASS_KEY = "passvault-device-local-key-2026";
+async function getDeviceKey(storeInstance) {
+    let keyStr = await storeInstance.get("deviceKey");
+    if (!keyStr) {
+        // Generate a completely random 256-bit key on first launch
+        const randomBytes = window.crypto.getRandomValues(new Uint8Array(32));
+        keyStr = Array.from(randomBytes).map(b => b.toString(16).padStart(2, '0')).join('');
+        await storeInstance.set("deviceKey", keyStr);
+        await storeInstance.save();
+    }
+    return keyStr;
+}
 
-async function getEncryptionKey() {
+async function getEncryptionKey(storeInstance) {
+    const deviceKey = await getDeviceKey(storeInstance);
     const enc = new TextEncoder();
     const keyMaterial = await window.crypto.subtle.importKey(
         "raw",
-        enc.encode(PASS_KEY),
+        enc.encode(deviceKey),
         { name: "PBKDF2" },
         false,
         ["deriveBits", "deriveKey"]
@@ -30,8 +41,8 @@ async function getEncryptionKey() {
     );
 }
 
-async function encryptData(data) {
-    const key = await getEncryptionKey();
+async function encryptData(data, storeInstance) {
+    const key = await getEncryptionKey(storeInstance);
     const iv = window.crypto.getRandomValues(new Uint8Array(12));
     const enc = new TextEncoder();
     const encryptedContent = await window.crypto.subtle.encrypt(
@@ -48,8 +59,8 @@ async function encryptData(data) {
     return Array.from(result);
 }
 
-async function decryptData(dataArray) {
-    const key = await getEncryptionKey();
+async function decryptData(dataArray, storeInstance) {
+    const key = await getEncryptionKey(storeInstance);
     const data = new Uint8Array(dataArray);
     const iv = data.slice(0, 12);
     const ciphertext = data.slice(12);
@@ -81,14 +92,13 @@ export default function PassVault() {
     const initVault = async () => {
         try {
             const dir = await appDataDir();
-            console.log("App data directory path is " + dir);
             const storeInstance = await load(`${dir}\\vault.json`, { autoSave: false });
             setStore(storeInstance);
 
             const encryptedCreds = await storeInstance.get("credentials");
             if (encryptedCreds) {
                 try {
-                    const decrypted = await decryptData(encryptedCreds);
+                    const decrypted = await decryptData(encryptedCreds, storeInstance);
                     setCredentials(decrypted);
                 } catch (err) {
                     console.error("Failed to decrypt credentials", err);
@@ -132,7 +142,7 @@ export default function PassVault() {
             const newId = crypto.randomUUID();
             const updatedCreds = [...credentials, { ...newCred, id: newId }];
 
-            const encrypted = await encryptData(updatedCreds);
+            const encrypted = await encryptData(updatedCreds, store);
             await store.set("credentials", encrypted);
             await store.save();
 
@@ -142,6 +152,26 @@ export default function PassVault() {
         } catch (err) {
             console.error("Failed to add credential", err);
             alert("Error adding credential");
+        }
+    };
+
+    const handleDelete = async (id) => {
+        if (!store) return;
+        if (!window.confirm("Are you sure you want to delete this credential?")) return;
+
+        try {
+            const updatedCreds = credentials.filter(c => c.id !== id);
+            
+            const encrypted = await encryptData(updatedCreds, store);
+            await store.set("credentials", encrypted);
+            await store.save();
+            
+            setCredentials(updatedCreds);
+            setToastMessage("✓ Credential deleted");
+            setTimeout(() => setToastMessage(""), 3000);
+        } catch (err) {
+            console.error("Failed to delete credential", err);
+            alert("Error deleting credential");
         }
     };
 
@@ -192,12 +222,21 @@ export default function PassVault() {
                                     {cred.username && <span>👤 {cred.username}</span>}
                                 </div>
                             </div>
-                            <button
-                                className={`copy-button ${copiedId === cred.id ? 'copied' : ''}`}
-                                onClick={() => handleCopy(cred)}
-                            >
-                                {copiedId === cred.id ? "✓ Copied" : "Copy"}
-                            </button>
+                            <div style={{ display: "flex", gap: "8px" }}>
+                                <button
+                                    className={`copy-button ${copiedId === cred.id ? 'copied' : ''}`}
+                                    onClick={() => handleCopy(cred)}
+                                >
+                                    {copiedId === cred.id ? "✓ Copied" : "Copy"}
+                                </button>
+                                <button
+                                    className="delete-button"
+                                    onClick={() => handleDelete(cred.id)}
+                                    title="Delete"
+                                >
+                                    🗑️
+                                </button>
+                            </div>
                         </div>
                     ))
                 )}
