@@ -137,7 +137,38 @@ npm run build
 
 
 For Desktop development, run:
-  npm run tauri dev
+```bash
+npm run tauri dev
+```
 
 For Android development, run:
-  npm run tauri android dev
+```bash
+npm run tauri android dev
+```
+
+# Actions CI/CD Pipeline.
+
+Workflow file at 
+```bash
+release.yml
+```
+
+## How to trigger it:
+
+Modify the version in 
+
+```bash
+package.json
+tauri.conf.json
+Cargo.toml
+```
+
+Tag your release with a version number (this is what triggers the automated builders!):
+
+```bash
+git tag "v1.0.0"
+git push origin main
+git push origin "v1.0.0"
+```
+
+Once you run git push origin "v1.0.0", GitHub's automated servers will immediately spin up a Mac, an Ubuntu, and a Windows machine in the cloud. They will build the app and automatically create a Release on your GitHub page containing the `.dmg`, `.deb`, `.AppImage`, and `.msi` installers!

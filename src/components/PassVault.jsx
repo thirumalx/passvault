@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { load } from "@tauri-apps/plugin-store";
 import { appDataDir } from "@tauri-apps/api/path";
 import { writeText, clear } from "@tauri-apps/plugin-clipboard-manager";
+import { Command } from "@tauri-apps/plugin-shell";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import './PassVault.css';
 
 // --- Web Crypto Helpers ---
@@ -82,7 +84,7 @@ export default function PassVault() {
     const [toastMessage, setToastMessage] = useState("");
     const [copiedId, setCopiedId] = useState(null);
     const [isAdding, setIsAdding] = useState(false);
-    const [newCred, setNewCred] = useState({ name: "", system: "", environment: "", username: "", password: "" });
+    const [newCred, setNewCred] = useState({ id: null, name: "", url: "", username: "", password: "", connectionType: "web", remarks: "", installPath: "" });
     const [store, setStore] = useState(null);
 
     useEffect(() => {
@@ -109,38 +111,55 @@ export default function PassVault() {
         }
     };
 
-    const handleCopy = async (cred) => {
+    const handleCopy = async (cred, type) => {
         try {
-            await writeText(cred.password);
+            const textToCopy = type === 'username' ? cred.username : cred.password;
+            if (!textToCopy) return;
 
-            setCopiedId(cred.id);
-            setToastMessage("✓ Password copied to clipboard");
+            await writeText(textToCopy);
 
-            // Clear clipboard after 15 seconds
+            setCopiedId(`${cred.id}-${type}`);
+            setToastMessage(`${type === 'username' ? 'Username' : 'Password'} copied to clipboard`);
+
+            // Clear clipboard after 15 seconds if it's a password
             setTimeout(async () => {
                 setCopiedId(null);
                 setToastMessage("");
-                try {
-                    await clear();
-                } catch (e) {
-                    console.error("Failed to clear clipboard", e);
+                if (type === 'password') {
+                    try {
+                        await clear();
+                    } catch (e) {
+                        console.error("Failed to clear clipboard", e);
+                    }
                 }
             }, 15000);
 
         } catch (err) {
-            console.error("Failed to copy password", err);
-            setToastMessage("❌ Failed to copy password");
+            console.error(`Failed to copy ${type}`, err);
+            setToastMessage(`Failed to copy ${type}`);
             setTimeout(() => setToastMessage(""), 3000);
         }
     };
 
-    const handleAddCredential = async (e) => {
+    const handleOpenEdit = (cred) => {
+        setNewCred({ ...cred });
+        setIsAdding(true);
+    };
+
+    const handleSaveCredential = async (e) => {
         e.preventDefault();
         if (!store) return;
 
         try {
-            const newId = crypto.randomUUID();
-            const updatedCreds = [...credentials, { ...newCred, id: newId }];
+            let updatedCreds;
+            if (newCred.id) {
+                updatedCreds = credentials.map(c => c.id === newCred.id ? { ...newCred } : c);
+                setToastMessage("Credential updated");
+            } else {
+                const newId = crypto.randomUUID();
+                updatedCreds = [...credentials, { ...newCred, id: newId }];
+                setToastMessage("Credential added");
+            }
 
             const encrypted = await encryptData(updatedCreds, store);
             await store.set("credentials", encrypted);
@@ -148,10 +167,12 @@ export default function PassVault() {
 
             setCredentials(updatedCreds);
             setIsAdding(false);
-            setNewCred({ name: "", system: "", environment: "", username: "", password: "" });
+            setNewCred({ id: null, name: "", url: "", username: "", password: "", connectionType: "web", remarks: "", installPath: "" });
+
+            setTimeout(() => setToastMessage(""), 3000);
         } catch (err) {
-            console.error("Failed to add credential", err);
-            alert("Error adding credential");
+            console.error("Failed to save credential", err);
+            alert("Error saving credential");
         }
     };
 
@@ -161,13 +182,13 @@ export default function PassVault() {
 
         try {
             const updatedCreds = credentials.filter(c => c.id !== id);
-            
+
             const encrypted = await encryptData(updatedCreds, store);
             await store.set("credentials", encrypted);
             await store.save();
-            
+
             setCredentials(updatedCreds);
-            setToastMessage("✓ Credential deleted");
+            setToastMessage("Credential deleted");
             setTimeout(() => setToastMessage(""), 3000);
         } catch (err) {
             console.error("Failed to delete credential", err);
@@ -175,12 +196,103 @@ export default function PassVault() {
         }
     };
 
+    const handleConnect = async (cred) => {
+        try {
+            const isWin = navigator.userAgent.includes('Win');
+            const isMac = navigator.userAgent.includes('Mac');
+
+            if (cred.username) {
+                await writeText(cred.username);
+                setToastMessage("Username auto-copied to clipboard! Paste it when prompted.");
+                setCopiedId(`${cred.id}-username`);
+                setTimeout(() => { setCopiedId(null); setToastMessage(""); }, 15000);
+            }
+
+            if (cred.connectionType === 'web') {
+                let targetUrl = cred.url;
+                if (!targetUrl.startsWith('http://') && !targetUrl.startsWith('https://')) {
+                    targetUrl = 'https://' + targetUrl;
+                }
+                const command = cred.installPath ? Command.create(cred.installPath, [targetUrl]) : null;
+                if (command) {
+                    await command.spawn();
+                } else {
+                    await openUrl(targetUrl);
+                }
+            } else if (cred.connectionType === 'putty') {
+                const exe = cred.installPath || 'putty';
+                const command = Command.create(exe, [
+                    '-ssh',
+                    `${cred.username}@${cred.url}`,
+                    '-pw',
+                    cred.password
+                ]);
+                await command.spawn();
+            } else if (cred.connectionType === 'powershell') {
+                if (isWin) {
+                    const exe = cred.installPath || 'powershell';
+                    const command = Command.create(exe, [
+                        '-NoExit',
+                        '-Command',
+                        `Enter-PSSession -ComputerName ${cred.url} -Credential (New-Object System.Management.Automation.PSCredential ("${cred.username}", (ConvertTo-SecureString "${cred.password}" -AsPlainText -Force)))`
+                    ]);
+                    await command.spawn();
+                } else {
+                    const exe = cred.installPath || 'pwsh';
+                    const command = Command.create(exe, [
+                        '-NoExit',
+                        '-Command',
+                        `Enter-PSSession -ComputerName ${cred.url} -Credential (New-Object System.Management.Automation.PSCredential ("${cred.username}", (ConvertTo-SecureString "${cred.password}" -AsPlainText -Force)))`
+                    ]);
+                    await command.spawn();
+                }
+            } else if (cred.connectionType === 'pgadmin') {
+                if (cred.installPath) {
+                    await Command.create(cred.installPath).spawn();
+                } else {
+                    if (isWin) {
+                        const command = Command.create('powershell', [
+                            '-WindowStyle', 'Hidden',
+                            '-Command',
+                            `Start-Process "pgadmin4" -ErrorAction SilentlyContinue`
+                        ]);
+                        await command.spawn();
+                    } else if (isMac) {
+                        await Command.create('open', ['-a', 'pgAdmin 4']).spawn();
+                    } else {
+                        await Command.create('pgadmin4').spawn();
+                    }
+                }
+            } else if (cred.connectionType === 'mysqlworkbench') {
+                if (cred.installPath) {
+                    await Command.create(cred.installPath).spawn();
+                } else {
+                    if (isWin) {
+                        const command = Command.create('powershell', [
+                            '-WindowStyle', 'Hidden',
+                            '-Command',
+                            `Start-Process "MySQLWorkbench.exe" -ErrorAction SilentlyContinue; if (!$?) { Start-Process "mysqlworkbench" -ErrorAction SilentlyContinue }`
+                        ]);
+                        await command.spawn();
+                    } else if (isMac) {
+                        await Command.create('open', ['-a', 'MySQLWorkbench']).spawn();
+                    } else {
+                        await Command.create('mysql-workbench').spawn();
+                    }
+                }
+            }
+        } catch (err) {
+            console.error(`Failed to launch ${cred.connectionType}`, err);
+            setToastMessage(`Failed to launch ${cred.connectionType}. Ensure the application is installed and in your PATH.`);
+            setTimeout(() => setToastMessage(""), 5000);
+        }
+    };
+
     const filteredCreds = credentials.filter(c => {
         const term = search.toLowerCase();
         return (
             c.name.toLowerCase().includes(term) ||
-            (c.system && c.system.toLowerCase().includes(term)) ||
-            (c.environment && c.environment.toLowerCase().includes(term))
+            (c.url && c.url.toLowerCase().includes(term))
         );
     });
 
@@ -188,9 +300,12 @@ export default function PassVault() {
         <div className="vault-container">
             <header className="vault-header">
                 <h1>
-                    <span>🔐</span> Passvault
+                    <span>&#128272;</span> Passvault
                 </h1>
-                <button className="add-button" onClick={() => setIsAdding(true)}>
+                <button className="add-button" onClick={() => {
+                    setNewCred({ id: null, name: "", url: "", username: "", password: "", connectionType: "web", remarks: "", installPath: "" });
+                    setIsAdding(true);
+                }}>
                     + Add Credential
                 </button>
             </header>
@@ -199,7 +314,7 @@ export default function PassVault() {
                 <input
                     type="text"
                     className="search-input"
-                    placeholder="Search by name, system, or environment..."
+                    placeholder="Search by name or URL/IP..."
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                     autoFocus
@@ -214,27 +329,70 @@ export default function PassVault() {
                 ) : (
                     filteredCreds.map(cred => (
                         <div key={cred.id} className="credential-card">
-                            <div className="credential-info">
-                                <h3>{cred.name}</h3>
-                                <div className="credential-meta">
-                                    {cred.environment && <span className="badge">{cred.environment}</span>}
-                                    {cred.system && <span>{cred.system}</span>}
-                                    {cred.username && <span>👤 {cred.username}</span>}
+                            <div className="credential-info" style={{ flex: 1, minWidth: 0, paddingRight: '12px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden' }}>
+                                    <h3 style={{ margin: 0, whiteSpace: 'nowrap', flexShrink: 0 }}>{cred.name}</h3>
+                                    {cred.remarks && (
+                                        <span style={{ fontSize: '0.85em', color: '#666', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flexShrink: 1 }}>
+                                            &#128221; {cred.remarks}
+                                        </span>
+                                    )}
+                                    <span 
+                                        className="badge" 
+                                        style={{ textTransform: 'capitalize', fontSize: '0.75rem', flexShrink: 0, cursor: 'pointer' }}
+                                        onClick={() => handleConnect(cred)}
+                                        title="Connect / Open"
+                                    >
+                                        {cred.connectionType === 'pgadmin' ? '🐘 ' : 
+                                         cred.connectionType === 'mysqlworkbench' ? '🐬 ' :
+                                         cred.connectionType === 'putty' ? '🔌 ' :
+                                         cred.connectionType === 'powershell' ? '⚡ ' : '🌐 '}
+                                        {cred.connectionType || 'web'}
+                                    </span>
+                                    {cred.url && (
+                                        <span style={{ fontSize: '0.85rem', color: '#666', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flexShrink: 1 }}>
+                                            &#127760; {cred.url}
+                                        </span>
+                                    )}
+                                </div>
+                                <div className="credential-meta" style={{ marginTop: '4px' }}>
+                                    {cred.username && <span>&#128100; {cred.username}</span>}
                                 </div>
                             </div>
-                            <div style={{ display: "flex", gap: "8px" }}>
+                            <div style={{ display: "flex", gap: "4px", alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+
                                 <button
-                                    className={`copy-button ${copiedId === cred.id ? 'copied' : ''}`}
-                                    onClick={() => handleCopy(cred)}
+                                    className={`copy-button ${copiedId === `${cred.id}-username` ? 'copied' : ''}`}
+                                    onClick={() => handleCopy(cred, 'username')}
+                                    style={{ padding: '6px 10px', fontSize: '0.85em' }}
                                 >
-                                    {copiedId === cred.id ? "✓ Copied" : "Copy"}
+                                    {copiedId === `${cred.id}-username` ? "Copied!" : "Copy User"}
                                 </button>
+
+                                <button
+                                    className={`copy-button ${copiedId === `${cred.id}-password` ? 'copied' : ''}`}
+                                    onClick={() => handleCopy(cred, 'password')}
+                                    style={{ padding: '6px 10px', fontSize: '0.85em' }}
+                                >
+                                    {copiedId === `${cred.id}-password` ? "Copied!" : "Copy Pass"}
+                                </button>
+
+                                <button
+                                    className="add-button"
+                                    style={{ padding: '6px 10px', border: '1px solid #aaa', color: 'inherit', background: 'transparent', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85em' }}
+                                    onClick={() => handleOpenEdit(cred)}
+                                    title="Edit"
+                                >
+                                    &#9998; Edit
+                                </button>
+
                                 <button
                                     className="delete-button"
                                     onClick={() => handleDelete(cred.id)}
                                     title="Delete"
+                                    style={{ padding: '6px 10px', fontSize: '0.85em' }}
                                 >
-                                    🗑️
+                                    &#128465;
                                 </button>
                             </div>
                         </div>
@@ -245,34 +403,56 @@ export default function PassVault() {
             {toastMessage && (
                 <div className="toast">
                     <div className="toast-message">{toastMessage}</div>
-                    {copiedId && <div className="toast-hint">Clipboard will clear in 15 seconds</div>}
                 </div>
             )}
 
             {isAdding && (
                 <div className="modal-overlay">
                     <div className="modal-content">
-                        <h2>Add Credential</h2>
-                        <form onSubmit={handleAddCredential}>
+                        <h2>{newCred.id ? "Edit Credential" : "Add Credential"}</h2>
+                        <form onSubmit={handleSaveCredential}>
                             <div className="form-group">
                                 <label>Name</label>
-                                <input required value={newCred.name} onChange={e => setNewCred({ ...newCred, name: e.target.value })} placeholder="e.g. Production DB" />
+                                <input required value={newCred.name} onChange={e => setNewCred({ ...newCred, name: e.target.value })} placeholder="e.g. My Website, WebServer-01" />
                             </div>
                             <div className="form-group">
-                                <label>System</label>
-                                <input value={newCred.system} onChange={e => setNewCred({ ...newCred, system: e.target.value })} placeholder="e.g. MySQL" />
+                                <label>Installation Path</label>
+                                <input value={newCred.installPath || ""} onChange={e => setNewCred({ ...newCred, installPath: e.target.value })} placeholder="e.g. C:\Program Files\PuTTY\putty.exe (Optional)" />
                             </div>
                             <div className="form-group">
-                                <label>Environment</label>
-                                <input value={newCred.environment} onChange={e => setNewCred({ ...newCred, environment: e.target.value })} placeholder="e.g. PROD" />
+                                <label>Connection Type</label>
+                                <select
+                                    value={newCred.connectionType}
+                                    onChange={e => setNewCred({ ...newCred, connectionType: e.target.value })}
+                                    style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }}
+                                >
+                                    <option value="web">Web (Browser)</option>
+                                    <option value="putty">Putty (SSH)</option>
+                                    <option value="powershell">PowerShell</option>
+                                    <option value="pgadmin">Database (pgAdmin)</option>
+                                    <option value="mysqlworkbench">Database (MySQL Workbench)</option>
+                                </select>
+                            </div>
+                            <div className="form-group">
+                                <label>URL / IP</label>
+                                <input required value={newCred.url} onChange={e => setNewCred({ ...newCred, url: e.target.value })} placeholder="e.g. 192.168.1.100 or https://example.com" />
                             </div>
                             <div className="form-group">
                                 <label>Username</label>
-                                <input value={newCred.username} onChange={e => setNewCred({ ...newCred, username: e.target.value })} placeholder="e.g. app_user" />
+                                <input value={newCred.username} onChange={e => setNewCred({ ...newCred, username: e.target.value })} placeholder="e.g. root" />
                             </div>
                             <div className="form-group">
                                 <label>Password</label>
                                 <input type="password" required value={newCred.password} onChange={e => setNewCred({ ...newCred, password: e.target.value })} />
+                            </div>
+                            <div className="form-group">
+                                <label>Remarks</label>
+                                <textarea
+                                    value={newCred.remarks}
+                                    onChange={e => setNewCred({ ...newCred, remarks: e.target.value })}
+                                    placeholder="Optional notes..."
+                                    style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ccc', minHeight: '60px' }}
+                                />
                             </div>
 
                             <div className="modal-actions">

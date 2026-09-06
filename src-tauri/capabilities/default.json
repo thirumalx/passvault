@@ -12,6 +12,37 @@
     "clipboard-manager:default",
     "clipboard-manager:allow-write-text",
     "clipboard-manager:allow-clear",
-    "store:default"
+    "store:default",
+    "shell:default",
+    {
+      "identifier": "shell:allow-execute",
+      "allow": [
+        {
+          "name": "putty",
+          "cmd": "putty",
+          "args": true
+        },
+        {
+          "name": "powershell",
+          "cmd": "powershell",
+          "args": true
+        },
+        {
+          "name": "pgadmin4",
+          "cmd": "pgadmin4",
+          "args": true
+        },
+        {
+          "name": "mysqlworkbench",
+          "cmd": "mysqlworkbench",
+          "args": true
+        },
+        {
+          "name": "MySQLWorkbench",
+          "cmd": "MySQLWorkbench",
+          "args": true
+        }
+      ]
+    }
   ]
 }
