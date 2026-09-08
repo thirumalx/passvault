@@ -369,7 +369,7 @@ export default function PassVault() {
                                     )}
                                     <span 
                                         className="badge" 
-                                        style={{ textTransform: 'capitalize', fontSize: '0.75rem', flexShrink: 0, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                        style={{ textTransform: (cred.connectionType === 'pam' || cred.connectionType === 'vpn') ? 'uppercase' : 'capitalize', fontSize: '0.75rem', flexShrink: 0, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
                                         onClick={() => handleConnect(cred)}
                                         title="Connect / Open"
                                     >
@@ -377,6 +377,8 @@ export default function PassVault() {
                                          cred.connectionType === 'mysqlworkbench' ? '🐬 ' :
                                          cred.connectionType === 'putty' ? '🔌 ' :
                                          cred.connectionType === 'powershell' ? '⚡ ' : 
+                                         cred.connectionType === 'pam' ? '🛡️ ' :
+                                         cred.connectionType === 'vpn' ? '🔒 ' :
                                          <img src={getFaviconUrl(cred.url)} width="14" height="14" onError={(e) => { e.target.onerror = null; e.target.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">🌐</text></svg>'; }} alt="🌐"/>}
                                         {cred.connectionType || 'web'}
                                     </span>

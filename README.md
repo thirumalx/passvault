@@ -133,15 +133,14 @@ npm run dev
 npm run build
 ```
 
-
-
-
 For Desktop development, run:
+
 ```bash
 npm run tauri dev
 ```
 
 For Android development, run:
+
 ```bash
 npm run tauri android dev
 ```
@@ -187,4 +186,3 @@ Environment variables used to sign:
 - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`
 
 Set `public key` in the tauri.conf.json `pubkey` field. And set `private key` and `private key password` in the `settings` -> `secrets` -> `actions`.
-git

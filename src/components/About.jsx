@@ -44,7 +44,12 @@ export default function About({ onClose }) {
             }
         } catch (error) {
             console.error('Update check failed:', error);
-            setUpdateStatus(`Failed to check for updates: ${error.message || error}`);
+            const errMsg = error.message || String(error);
+            if (errMsg.includes('Could not fetch a valid release JSON')) {
+                setUpdateStatus('Update check failed: No release published yet on GitHub.');
+            } else {
+                setUpdateStatus(`Failed to check for updates: ${errMsg}`);
+            }
         } finally {
             setIsChecking(false);
         }

@@ -21,6 +21,28 @@
   -webkit-text-size-adjust: 100%;
 }
 
+body {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+/* Slim Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.4);
+}
+
 .container {
   margin: 0;
   padding-top: 10vh;
@@ -99,6 +121,13 @@ button {
   :root {
     color: #f6f6f6;
     background-color: #2f2f2f;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.2);
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.4);
   }
 
   a:hover {

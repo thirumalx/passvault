@@ -14,6 +14,7 @@
     "clipboard-manager:allow-clear",
     "store:default",
     "shell:default",
+    "updater:default",
     {
       "identifier": "shell:allow-execute",
       "allow": [
