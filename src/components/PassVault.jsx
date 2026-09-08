@@ -449,8 +449,8 @@ export default function PassVault() {
                                     <input required value={newCred.name} onChange={e => setNewCred({ ...newCred, name: e.target.value })} placeholder="e.g. My Website, WebServer-01" />
                                 </div>
                                 <div className="form-group">
-                                    <label>URL / IP</label>
-                                    <input required value={newCred.url} onChange={e => setNewCred({ ...newCred, url: e.target.value })} placeholder="e.g. 192.168.1.100 or https://example.com" />
+                                    <label>URL / IP (Optional)</label>
+                                    <input value={newCred.url} onChange={e => setNewCred({ ...newCred, url: e.target.value })} placeholder="e.g. 192.168.1.100 or https://example.com" />
                                 </div>
                             </div>
                             <div className="form-row">
@@ -476,6 +476,8 @@ export default function PassVault() {
                                         <option value="powershell">PowerShell</option>
                                         <option value="pgadmin">Database (pgAdmin)</option>
                                         <option value="mysqlworkbench">Database (MySQL Workbench)</option>
+                                        <option value="pam">PAM</option>
+                                        <option value="vpn">VPN</option>
                                     </select>
                                 </div>
                                 <div className="form-group">
