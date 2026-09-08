@@ -1,6 +1,6 @@
 [package]
 name = "passvault"
-version = "0.1.3"
+version = "0.1.4"
 description = "A Tauri App"
 authors = ["Thirumal"]
 edition = "2021"
