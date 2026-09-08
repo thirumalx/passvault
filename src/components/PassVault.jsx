@@ -4,6 +4,7 @@ import { appDataDir } from "@tauri-apps/api/path";
 import { writeText, clear } from "@tauri-apps/plugin-clipboard-manager";
 import { Command } from "@tauri-apps/plugin-shell";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import About from "./About";
 import './PassVault.css';
 
 // --- Web Crypto Helpers ---
@@ -81,9 +82,10 @@ async function decryptData(dataArray, storeInstance) {
 export default function PassVault() {
     const [credentials, setCredentials] = useState([]);
     const [search, setSearch] = useState("");
-    const [toastMessage, setToastMessage] = useState("");
+    const [toast, setToast] = useState(null);
     const [copiedId, setCopiedId] = useState(null);
     const [isAdding, setIsAdding] = useState(false);
+    const [isAboutOpen, setIsAboutOpen] = useState(false);
     const [newCred, setNewCred] = useState({ id: null, name: "", url: "", username: "", password: "", connectionType: "web", remarks: "", installPath: "" });
     const [store, setStore] = useState(null);
 
@@ -119,12 +121,12 @@ export default function PassVault() {
             await writeText(textToCopy);
 
             setCopiedId(`${cred.id}-${type}`);
-            setToastMessage(`${type === 'username' ? 'Username' : 'Password'} copied to clipboard`);
+            setToast({ message: `${type === 'username' ? 'Username' : 'Password'} copied to clipboard`, duration: type === 'password' ? 15000 : 3000 });
 
             // Clear clipboard after 15 seconds if it's a password
             setTimeout(async () => {
                 setCopiedId(null);
-                setToastMessage("");
+                setToast(null);
                 if (type === 'password') {
                     try {
                         await clear();
@@ -136,8 +138,8 @@ export default function PassVault() {
 
         } catch (err) {
             console.error(`Failed to copy ${type}`, err);
-            setToastMessage(`Failed to copy ${type}`);
-            setTimeout(() => setToastMessage(""), 3000);
+            setToast({ message: `Failed to copy ${type}`, duration: 3000 });
+            setTimeout(() => setToast(null), 3000);
         }
     };
 
@@ -154,11 +156,11 @@ export default function PassVault() {
             let updatedCreds;
             if (newCred.id) {
                 updatedCreds = credentials.map(c => c.id === newCred.id ? { ...newCred } : c);
-                setToastMessage("Credential updated");
+                setToast({ message: "Credential updated", duration: 3000 });
             } else {
                 const newId = crypto.randomUUID();
                 updatedCreds = [...credentials, { ...newCred, id: newId }];
-                setToastMessage("Credential added");
+                setToast({ message: "Credential added", duration: 3000 });
             }
 
             const encrypted = await encryptData(updatedCreds, store);
@@ -169,7 +171,7 @@ export default function PassVault() {
             setIsAdding(false);
             setNewCred({ id: null, name: "", url: "", username: "", password: "", connectionType: "web", remarks: "", installPath: "" });
 
-            setTimeout(() => setToastMessage(""), 3000);
+            setTimeout(() => setToast(null), 3000);
         } catch (err) {
             console.error("Failed to save credential", err);
             alert("Error saving credential");
@@ -188,8 +190,8 @@ export default function PassVault() {
             await store.save();
 
             setCredentials(updatedCreds);
-            setToastMessage("Credential deleted");
-            setTimeout(() => setToastMessage(""), 3000);
+            setToast({ message: "Credential deleted", duration: 3000 });
+            setTimeout(() => setToast(null), 3000);
         } catch (err) {
             console.error("Failed to delete credential", err);
             alert("Error deleting credential");
@@ -203,9 +205,9 @@ export default function PassVault() {
 
             if (cred.username) {
                 await writeText(cred.username);
-                setToastMessage("Username auto-copied to clipboard! Paste it when prompted.");
+                setToast({ message: "Username auto-copied to clipboard! Paste it when prompted.", duration: 15000 });
                 setCopiedId(`${cred.id}-username`);
-                setTimeout(() => { setCopiedId(null); setToastMessage(""); }, 15000);
+                setTimeout(() => { setCopiedId(null); setToast(null); }, 15000);
             }
 
             if (cred.connectionType === 'web') {
@@ -283,8 +285,8 @@ export default function PassVault() {
             }
         } catch (err) {
             console.error(`Failed to launch ${cred.connectionType}`, err);
-            setToastMessage(`Failed to launch ${cred.connectionType}. Ensure the application is installed and in your PATH.`);
-            setTimeout(() => setToastMessage(""), 5000);
+            setToast({ message: `Failed to launch ${cred.connectionType}. Ensure the application is installed and in your PATH.`, duration: 5000 });
+            setTimeout(() => setToast(null), 5000);
         }
     };
 
@@ -296,18 +298,35 @@ export default function PassVault() {
         );
     });
 
+    const getFaviconUrl = (url) => {
+        try {
+            if (!url) return null;
+            let target = url;
+            if (!target.startsWith('http')) target = 'https://' + target;
+            const urlObj = new URL(target);
+            return `https://www.google.com/s2/favicons?domain=${urlObj.hostname}&sz=32`;
+        } catch (e) {
+            return null;
+        }
+    };
+
     return (
         <div className="vault-container">
             <header className="vault-header">
                 <h1>
                     <span>&#128272;</span> Passvault
                 </h1>
-                <button className="add-button" onClick={() => {
-                    setNewCred({ id: null, name: "", url: "", username: "", password: "", connectionType: "web", remarks: "", installPath: "" });
-                    setIsAdding(true);
-                }}>
-                    + Add Credential
-                </button>
+                <div style={{ display: 'flex', gap: '10px' }}>
+                    <button className="add-button" style={{ background: '#555' }} onClick={() => setIsAboutOpen(true)}>
+                        ℹ️ About
+                    </button>
+                    <button className="add-button" onClick={() => {
+                        setNewCred({ id: null, name: "", url: "", username: "", password: "", connectionType: "web", remarks: "", installPath: "" });
+                        setIsAdding(true);
+                    }}>
+                        + Add Credential
+                    </button>
+                </div>
             </header>
 
             <div className="search-container">
@@ -323,8 +342,19 @@ export default function PassVault() {
 
             <div className="vault-list">
                 {filteredCreds.length === 0 ? (
-                    <div style={{ textAlign: 'center', color: '#888', marginTop: '20px' }}>
-                        No credentials found. Click '+ Add Credential' to create one.
+                    <div className="empty-state">
+                        <svg width="120" height="120" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" style={{ color: '#ccc', marginBottom: '16px' }}>
+                            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                        </svg>
+                        <h2>Your vault is empty</h2>
+                        <p>Add your first credential to securely store and manage your access details.</p>
+                        <button className="copy-button" style={{ marginTop: '16px' }} onClick={() => {
+                            setNewCred({ id: null, name: "", url: "", username: "", password: "", connectionType: "web", remarks: "", installPath: "" });
+                            setIsAdding(true);
+                        }}>
+                            + Add Credential
+                        </button>
                     </div>
                 ) : (
                     filteredCreds.map(cred => (
@@ -339,14 +369,15 @@ export default function PassVault() {
                                     )}
                                     <span 
                                         className="badge" 
-                                        style={{ textTransform: 'capitalize', fontSize: '0.75rem', flexShrink: 0, cursor: 'pointer' }}
+                                        style={{ textTransform: 'capitalize', fontSize: '0.75rem', flexShrink: 0, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
                                         onClick={() => handleConnect(cred)}
                                         title="Connect / Open"
                                     >
                                         {cred.connectionType === 'pgadmin' ? '🐘 ' : 
                                          cred.connectionType === 'mysqlworkbench' ? '🐬 ' :
                                          cred.connectionType === 'putty' ? '🔌 ' :
-                                         cred.connectionType === 'powershell' ? '⚡ ' : '🌐 '}
+                                         cred.connectionType === 'powershell' ? '⚡ ' : 
+                                         <img src={getFaviconUrl(cred.url)} width="14" height="14" onError={(e) => { e.target.onerror = null; e.target.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">🌐</text></svg>'; }} alt="🌐"/>}
                                         {cred.connectionType || 'web'}
                                     </span>
                                     {cred.url && (
@@ -400,9 +431,10 @@ export default function PassVault() {
                 )}
             </div>
 
-            {toastMessage && (
+            {toast && (
                 <div className="toast">
-                    <div className="toast-message">{toastMessage}</div>
+                    <div className="toast-message">{toast.message}</div>
+                    <div className="toast-progress-bar" style={{ animationDuration: `${toast.duration}ms` }}></div>
                 </div>
             )}
 
@@ -411,39 +443,45 @@ export default function PassVault() {
                     <div className="modal-content">
                         <h2>{newCred.id ? "Edit Credential" : "Add Credential"}</h2>
                         <form onSubmit={handleSaveCredential}>
-                            <div className="form-group">
-                                <label>Name</label>
-                                <input required value={newCred.name} onChange={e => setNewCred({ ...newCred, name: e.target.value })} placeholder="e.g. My Website, WebServer-01" />
+                            <div className="form-row">
+                                <div className="form-group">
+                                    <label>Name</label>
+                                    <input required value={newCred.name} onChange={e => setNewCred({ ...newCred, name: e.target.value })} placeholder="e.g. My Website, WebServer-01" />
+                                </div>
+                                <div className="form-group">
+                                    <label>URL / IP</label>
+                                    <input required value={newCred.url} onChange={e => setNewCred({ ...newCred, url: e.target.value })} placeholder="e.g. 192.168.1.100 or https://example.com" />
+                                </div>
                             </div>
-                            <div className="form-group">
-                                <label>Installation Path</label>
-                                <input value={newCred.installPath || ""} onChange={e => setNewCred({ ...newCred, installPath: e.target.value })} placeholder="e.g. C:\Program Files\PuTTY\putty.exe (Optional)" />
+                            <div className="form-row">
+                                <div className="form-group">
+                                    <label>Username</label>
+                                    <input value={newCred.username} onChange={e => setNewCred({ ...newCred, username: e.target.value })} placeholder="e.g. root" />
+                                </div>
+                                <div className="form-group">
+                                    <label>Password</label>
+                                    <input type="password" required value={newCred.password} onChange={e => setNewCred({ ...newCred, password: e.target.value })} />
+                                </div>
                             </div>
-                            <div className="form-group">
-                                <label>Connection Type</label>
-                                <select
-                                    value={newCred.connectionType}
-                                    onChange={e => setNewCred({ ...newCred, connectionType: e.target.value })}
-                                    style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }}
-                                >
-                                    <option value="web">Web (Browser)</option>
-                                    <option value="putty">Putty (SSH)</option>
-                                    <option value="powershell">PowerShell</option>
-                                    <option value="pgadmin">Database (pgAdmin)</option>
-                                    <option value="mysqlworkbench">Database (MySQL Workbench)</option>
-                                </select>
-                            </div>
-                            <div className="form-group">
-                                <label>URL / IP</label>
-                                <input required value={newCred.url} onChange={e => setNewCred({ ...newCred, url: e.target.value })} placeholder="e.g. 192.168.1.100 or https://example.com" />
-                            </div>
-                            <div className="form-group">
-                                <label>Username</label>
-                                <input value={newCred.username} onChange={e => setNewCred({ ...newCred, username: e.target.value })} placeholder="e.g. root" />
-                            </div>
-                            <div className="form-group">
-                                <label>Password</label>
-                                <input type="password" required value={newCred.password} onChange={e => setNewCred({ ...newCred, password: e.target.value })} />
+                            <div className="form-row">
+                                <div className="form-group">
+                                    <label>Connection Type</label>
+                                    <select
+                                        value={newCred.connectionType}
+                                        onChange={e => setNewCred({ ...newCred, connectionType: e.target.value })}
+                                        className="form-select"
+                                    >
+                                        <option value="web">Web (Browser)</option>
+                                        <option value="putty">Putty (SSH)</option>
+                                        <option value="powershell">PowerShell</option>
+                                        <option value="pgadmin">Database (pgAdmin)</option>
+                                        <option value="mysqlworkbench">Database (MySQL Workbench)</option>
+                                    </select>
+                                </div>
+                                <div className="form-group">
+                                    <label>Installation Path</label>
+                                    <input value={newCred.installPath || ""} onChange={e => setNewCred({ ...newCred, installPath: e.target.value })} placeholder="e.g. C:\Program Files\PuTTY\putty.exe (Optional)" />
+                                </div>
                             </div>
                             <div className="form-group">
                                 <label>Remarks</label>
@@ -451,7 +489,7 @@ export default function PassVault() {
                                     value={newCred.remarks}
                                     onChange={e => setNewCred({ ...newCred, remarks: e.target.value })}
                                     placeholder="Optional notes..."
-                                    style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ccc', minHeight: '60px' }}
+                                    className="form-textarea"
                                 />
                             </div>
 
@@ -462,6 +500,10 @@ export default function PassVault() {
                         </form>
                     </div>
                 </div>
+            )}
+
+            {isAboutOpen && (
+                <About onClose={() => setIsAboutOpen(false)} />
             )}
         </div>
     );

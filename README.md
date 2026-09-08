@@ -172,3 +172,16 @@ git push origin "v1.0.0"
 ```
 
 Once you run git push origin "v1.0.0", GitHub's automated servers will immediately spin up a Mac, an Ubuntu, and a Windows machine in the cloud. They will build the app and automatically create a Release on your GitHub page containing the `.dmg`, `.deb`, `.AppImage`, and `.msi` installers!
+
+## How to generate the keys for release
+
+```bash
+npm run tauri signer generate -w ~/.tauri/passvault.key
+```
+
+Environment variables used to sign:
+- `TAURI_SIGNING_PRIVATE_KEY`
+- `TAURI_SIGNING_PRIVATE_KEY_PATH`
+- `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`
+
+Set `public key` in the tauri.conf.json `pubkey` field. And set `private key` and `private key password` in the `settings` -> `secrets` -> `actions`.

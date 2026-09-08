@@ -172,6 +172,23 @@
   align-items: center;
   z-index: 1000;
   animation: slideUpToast 0.3s ease-out;
+  overflow: hidden;
+}
+
+.toast-progress-bar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 4px;
+  background-color: #0f62fe;
+  animation-name: progressShrink;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+}
+
+@keyframes progressShrink {
+  0% { width: 100%; }
+  100% { width: 0%; }
 }
 
 @media (prefers-color-scheme: dark) {
@@ -213,10 +230,22 @@
   position: fixed;
   top: 0; left: 0; right: 0; bottom: 0;
   background: rgba(0,0,0,0.5);
+  backdrop-filter: blur(4px);
   display: flex;
   justify-content: center;
   align-items: center;
   z-index: 2000;
+  animation: fadeIn 0.2s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes scaleUp {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
 }
 
 .modal-content {
@@ -224,8 +253,9 @@
   padding: 30px;
   border-radius: 12px;
   width: 90%;
-  max-width: 400px;
+  max-width: 600px;
   box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+  animation: scaleUp 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -250,19 +280,53 @@
   font-weight: 500;
 }
 
-.form-group input {
+.form-row {
+  display: flex;
+  gap: 16px;
+}
+
+.form-row .form-group {
+  flex: 1;
+}
+
+@media (max-width: 600px) {
+  .form-row {
+    flex-direction: column;
+    gap: 0;
+  }
+}
+
+.form-group input, .form-select, .form-textarea {
   width: 100%;
   padding: 10px;
   border: 1px solid #ddd;
   border-radius: 6px;
   font-size: 1rem;
+  box-sizing: border-box;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  font-family: inherit;
+}
+
+.form-textarea {
+  min-height: 60px;
+  resize: vertical;
+}
+
+.form-group input:focus, .form-select:focus, .form-textarea:focus {
+  outline: none;
+  border-color: #0f62fe;
+  box-shadow: 0 0 0 3px rgba(15, 98, 254, 0.15);
 }
 
 @media (prefers-color-scheme: dark) {
-  .form-group input {
+  .form-group input, .form-select, .form-textarea {
     background: #1a1a1a;
     border-color: #444;
     color: white;
+  }
+  .form-group input:focus, .form-select:focus, .form-textarea:focus {
+    border-color: #87b0ff;
+    box-shadow: 0 0 0 3px rgba(135, 176, 255, 0.2);
   }
 }
 
@@ -296,4 +360,33 @@
 
 .master-password-container { display: flex; justify-content: center; align-items: center; min-height: 100vh; background-color: var(--background); }
 
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  text-align: center;
+  color: #666;
+}
 
+.empty-state h2 {
+  margin: 0 0 8px;
+  font-size: 1.5rem;
+  color: #333;
+}
+
+.empty-state p {
+  margin: 0;
+  font-size: 1rem;
+  max-width: 400px;
+}
+
+@media (prefers-color-scheme: dark) {
+  .empty-state {
+    color: #999;
+  }
+  .empty-state h2 {
+    color: #e0e0e0;
+  }
+}
