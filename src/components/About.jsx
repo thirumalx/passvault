@@ -60,8 +60,7 @@ export default function About({ onClose }) {
             <div className="modal-content" style={{ textAlign: 'center', maxWidth: '400px', backgroundColor: '#fff', color: '#000' }}>
                 <h2>About PassVault</h2>
                 <div style={{ margin: '20px 0' }}>
-                    <p style={{ fontSize: '1.2em', fontWeight: 'bold' }}>PassVault</p>
-                    <p>Version: {version || 'Loading...'}</p>
+                    <span><p>Version: {version || 'Loading...'} திருமால் </p></span>
                     <p>A secure local password manager.</p>
                 </div>
                 

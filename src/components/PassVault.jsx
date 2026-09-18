@@ -115,13 +115,13 @@ export default function PassVault() {
 
     const handleCopy = async (cred, type) => {
         try {
-            const textToCopy = type === 'username' ? cred.username : cred.password;
+            const textToCopy = type === 'username' ? cred.username : type === 'password' ? cred.password : cred.url;
             if (!textToCopy) return;
 
             await writeText(textToCopy);
 
             setCopiedId(`${cred.id}-${type}`);
-            setToast({ message: `${type === 'username' ? 'Username' : 'Password'} copied to clipboard`, duration: type === 'password' ? 15000 : 3000 });
+            setToast({ message: `${type === 'username' ? 'Username' : type === 'password' ? 'Password' : 'URL'} copied to clipboard`, duration: type === 'password' ? 15000 : 3000 });
 
             // Clear clipboard after 15 seconds if it's a password
             setTimeout(async () => {
@@ -140,6 +140,30 @@ export default function PassVault() {
             console.error(`Failed to copy ${type}`, err);
             setToast({ message: `Failed to copy ${type}`, duration: 3000 });
             setTimeout(() => setToast(null), 3000);
+        }
+    };
+
+    const handleMove = async (id, direction) => {
+        if (!store || search) return;
+        const index = credentials.findIndex(c => c.id === id);
+        if (index === -1) return;
+        
+        const newIndex = index + direction;
+        if (newIndex < 0 || newIndex >= credentials.length) return;
+
+        const updatedCreds = [...credentials];
+        const temp = updatedCreds[index];
+        updatedCreds[index] = updatedCreds[newIndex];
+        updatedCreds[newIndex] = temp;
+
+        try {
+            const encrypted = await encryptData(updatedCreds, store);
+            await store.set("credentials", encrypted);
+            await store.save();
+            setCredentials(updatedCreds);
+        } catch (err) {
+            console.error("Failed to move credential", err);
+            alert("Error moving credential");
         }
     };
 
@@ -329,7 +353,7 @@ export default function PassVault() {
                 </div>
             </header>
 
-            <div className="search-container">
+            <div className="search-container" style={{ position: 'relative' }}>
                 <input
                     type="text"
                     className="search-input"
@@ -337,7 +361,17 @@ export default function PassVault() {
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                     autoFocus
+                    style={{ paddingRight: '30px' }}
                 />
+                {search && (
+                    <button 
+                        onClick={() => setSearch("")}
+                        style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '1.2em', color: '#888' }}
+                        title="Clear search"
+                    >
+                        &times;
+                    </button>
+                )}
             </div>
 
             <div className="vault-list">
@@ -383,8 +417,12 @@ export default function PassVault() {
                                         {cred.connectionType || 'web'}
                                     </span>
                                     {cred.url && (
-                                        <span style={{ fontSize: '0.85rem', color: '#666', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flexShrink: 1 }}>
-                                            &#127760; {cred.url}
+                                        <span 
+                                            style={{ fontSize: '0.85rem', color: '#666', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flexShrink: 1, cursor: 'pointer', textDecoration: copiedId === `${cred.id}-url` ? 'underline' : 'none' }}
+                                            onClick={() => handleCopy(cred, 'url')}
+                                            title="Click to copy URL"
+                                        >
+                                            &#127760; {copiedId === `${cred.id}-url` ? "Copied!" : cred.url}
                                         </span>
                                     )}
                                 </div>
@@ -393,7 +431,24 @@ export default function PassVault() {
                                 </div>
                             </div>
                             <div style={{ display: "flex", gap: "4px", alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-
+                                <button
+                                    className="add-button"
+                                    style={{ padding: '6px 10px', fontSize: '0.85em', background: 'transparent', color: search ? '#ccc' : 'inherit', border: '1px solid', borderColor: search ? '#ccc' : '#aaa', cursor: search ? 'not-allowed' : 'pointer', borderRadius: '4px' }}
+                                    onClick={() => handleMove(cred.id, -1)}
+                                    disabled={search !== ""}
+                                    title="Move Up"
+                                >
+                                    &#8593;
+                                </button>
+                                <button
+                                    className="add-button"
+                                    style={{ padding: '6px 10px', fontSize: '0.85em', background: 'transparent', color: search ? '#ccc' : 'inherit', border: '1px solid', borderColor: search ? '#ccc' : '#aaa', cursor: search ? 'not-allowed' : 'pointer', borderRadius: '4px' }}
+                                    onClick={() => handleMove(cred.id, 1)}
+                                    disabled={search !== ""}
+                                    title="Move Down"
+                                >
+                                    &#8595;
+                                </button>
                                 <button
                                     className={`copy-button ${copiedId === `${cred.id}-username` ? 'copied' : ''}`}
                                     onClick={() => handleCopy(cred, 'username')}
