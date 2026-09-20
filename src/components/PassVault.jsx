@@ -167,6 +167,75 @@ export default function PassVault() {
         }
     };
 
+    const handleBackup = async () => {
+        try {
+            if (!store) return;
+            const deviceKey = await store.get("deviceKey");
+            const encryptedCreds = await store.get("credentials");
+            
+            const backupData = {
+                deviceKey,
+                credentials: encryptedCreds || []
+            };
+            
+            const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: "application/json" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `passvault_backup_${new Date().toISOString().split('T')[0]}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            
+            setToast({ message: "Backup successfully downloaded", duration: 3000 });
+            setTimeout(() => setToast(null), 3000);
+        } catch (err) {
+            console.error("Backup failed", err);
+            setToast({ message: "Backup failed", duration: 3000 });
+            setTimeout(() => setToast(null), 3000);
+        }
+    };
+
+    const handleRestore = () => {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = '.json';
+        input.onchange = async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            
+            if (!window.confirm("Restoring will overwrite your current vault on this device. Are you sure you want to proceed?")) return;
+            
+            const reader = new FileReader();
+            reader.onload = async (event) => {
+                try {
+                    const data = JSON.parse(event.target.result);
+                    if (!data.deviceKey || !data.credentials) {
+                        throw new Error("Invalid backup file format");
+                    }
+                    
+                    if (store) {
+                        await store.set("deviceKey", data.deviceKey);
+                        await store.set("credentials", data.credentials);
+                        await store.save();
+                        
+                        initVault(); // Re-init to decrypt with the restored key
+                        
+                        setToast({ message: "Restore successful", duration: 3000 });
+                        setTimeout(() => setToast(null), 3000);
+                    }
+                } catch (err) {
+                    console.error("Restore failed", err);
+                    setToast({ message: "Restore failed: Invalid file format", duration: 3000 });
+                    setTimeout(() => setToast(null), 3000);
+                }
+            };
+            reader.readAsText(file);
+        };
+        input.click();
+    };
+
     const handleOpenEdit = (cred) => {
         setNewCred({ ...cred });
         setIsAdding(true);
@@ -341,6 +410,12 @@ export default function PassVault() {
                     <span>&#128272;</span> Passvault
                 </h1>
                 <div style={{ display: 'flex', gap: '10px' }}>
+                    <button className="add-button" style={{ background: '#555' }} onClick={handleBackup} title="Export Vault">
+                        Backup
+                    </button>
+                    <button className="add-button" style={{ background: '#555' }} onClick={handleRestore} title="Import Vault">
+                        Restore
+                    </button>
                     <button className="add-button" style={{ background: '#555' }} onClick={() => setIsAboutOpen(true)}>
                         ℹ️ About
                     </button>
@@ -361,12 +436,12 @@ export default function PassVault() {
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                     autoFocus
-                    style={{ paddingRight: '30px' }}
+                    style={{ paddingRight: '3px' }}
                 />
                 {search && (
                     <button 
                         onClick={() => setSearch("")}
-                        style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '1.2em', color: '#888' }}
+                        style={{ position: 'absolute', right: '1px', top: '50%', transform: 'translateY(-50%)', background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '1.2em', color: '#888' }}
                         title="Clear search"
                     >
                         &times;
@@ -393,8 +468,8 @@ export default function PassVault() {
                 ) : (
                     filteredCreds.map(cred => (
                         <div key={cred.id} className="credential-card">
-                            <div className="credential-info" style={{ flex: 1, minWidth: 0, paddingRight: '12px' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden' }}>
+                            <div className="credential-info" style={{ flex: 1, minWidth: 0, paddingRight: '1px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '1px', overflow: 'hidden' }}>
                                     <h3 style={{ margin: 0, whiteSpace: 'nowrap', flexShrink: 0 }}>{cred.name}</h3>
                                     {cred.remarks && (
                                         <span style={{ fontSize: '0.85em', color: '#666', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flexShrink: 1 }}>
@@ -433,7 +508,6 @@ export default function PassVault() {
                             <div style={{ display: "flex", gap: "4px", alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                                 <button
                                     className="add-button"
-                                    style={{ padding: '6px 10px', fontSize: '0.85em', background: 'transparent', color: search ? '#ccc' : 'inherit', border: '1px solid', borderColor: search ? '#ccc' : '#aaa', cursor: search ? 'not-allowed' : 'pointer', borderRadius: '4px' }}
                                     onClick={() => handleMove(cred.id, -1)}
                                     disabled={search !== ""}
                                     title="Move Up"
@@ -442,7 +516,6 @@ export default function PassVault() {
                                 </button>
                                 <button
                                     className="add-button"
-                                    style={{ padding: '6px 10px', fontSize: '0.85em', background: 'transparent', color: search ? '#ccc' : 'inherit', border: '1px solid', borderColor: search ? '#ccc' : '#aaa', cursor: search ? 'not-allowed' : 'pointer', borderRadius: '4px' }}
                                     onClick={() => handleMove(cred.id, 1)}
                                     disabled={search !== ""}
                                     title="Move Down"
