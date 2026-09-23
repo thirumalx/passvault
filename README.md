@@ -16,6 +16,8 @@ Built with **Tauri + React**, the application provides a simple interface where 
 * 🔒 Encryption/protection with built-in security mechanisms
 * 🌐 Works completely locally without requiring a server
 * ⚡ Built with Tauri for low resource consumption
+* 📡 Local LAN Peer-to-Peer Sharing via mDNS
+* 🛡️ Post-Quantum Cryptography (ML-KEM/Kyber768) for secure sharing
 
 ## Example
 
@@ -81,6 +83,19 @@ Passwords should:
 * Be removed from the clipboard automatically after a short period
 
 The application should use Windows-native encryption/security facilities where possible.
+
+## P2P Credential Sharing (Post-Quantum)
+
+Passvault includes a decentralized, serverless mechanism to share credentials with other instances of Passvault on the same local network (LAN) using zero-configuration networking and Post-Quantum Cryptography (PQC).
+
+### How it works
+1. **Discovery (mDNS):** When the app launches, it generates a fresh **ML-KEM (Kyber768)** keypair. It broadcasts its presence and its Public Key on the local network via mDNS (`_passvault._tcp.local.`).
+2. **Encapsulation (ML-KEM):** When Alice wants to send a credential to Bob, Alice's client uses Bob's broadcasted Public Key to perform Key Encapsulation. This produces a **Ciphertext** and a 32-byte **Shared Secret**.
+3. **Encryption (AES-256-GCM):** Alice's client uses the generated Shared Secret to locally encrypt the credential JSON payload with **AES-256-GCM**.
+4. **Transmission:** Alice sends an HTTP POST request directly to Bob's IP address containing the ML-KEM Ciphertext and the AES-encrypted payload. 
+5. **Decapsulation:** Bob receives the payload, uses his Private Key to **Decapsulate** the Ciphertext and retrieve the exact same Shared Secret, and uses it to decrypt the AES payload, safely importing the credential into his local vault.
+
+This hybrid approach ensures that even if local network traffic is intercepted, the credential remains completely secure against both classical network sniffing and future quantum computer attacks (the "Harvest Now, Decrypt Later" threat).
 
 ## Credential Information
 

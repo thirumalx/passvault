@@ -4,6 +4,8 @@ import { appDataDir } from "@tauri-apps/api/path";
 import { writeText, clear } from "@tauri-apps/plugin-clipboard-manager";
 import { Command } from "@tauri-apps/plugin-shell";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import About from "./About";
 import './PassVault.css';
 
@@ -89,9 +91,45 @@ export default function PassVault() {
     const [newCred, setNewCred] = useState({ id: null, name: "", url: "", username: "", password: "", connectionType: "web", remarks: "", installPath: "" });
     const [store, setStore] = useState(null);
 
+    const [peers, setPeers] = useState([]);
+    const [credToShare, setCredToShare] = useState(null);
+
     useEffect(() => {
         initVault();
-    }, []);
+
+        // Listen for incoming shares
+        const unlisten = listen('incoming-share', async (event) => {
+            const { sender, credential } = event.payload;
+            if (window.confirm(`User "${sender}" wants to share a credential "${credential.name}" with you. Add to vault?`)) {
+                setCredentials(prev => {
+                    const newCreds = [...prev, { ...credential, id: crypto.randomUUID() }];
+                    // Encrypt and save
+                    if (store) {
+                        encryptData(newCreds, store).then(encrypted => {
+                            store.set("credentials", encrypted);
+                            store.save();
+                        });
+                    }
+                    return newCreds;
+                });
+                setToast({ message: `Credential from ${sender} saved!`, duration: 3000 });
+                setTimeout(() => setToast(null), 3000);
+            }
+        });
+
+        // Poll peers
+        const interval = setInterval(async () => {
+            try {
+                const foundPeers = await invoke("get_peers");
+                setPeers(foundPeers);
+            } catch (e) {}
+        }, 3000);
+
+        return () => {
+            unlisten.then(f => f());
+            clearInterval(interval);
+        };
+    }, [store]);
 
     const initVault = async () => {
         try {
@@ -555,11 +593,63 @@ export default function PassVault() {
                                 >
                                     &#128465;
                                 </button>
+                                <button
+                                    className="add-button"
+                                    onClick={() => setCredToShare(cred)}
+                                    title="Share via PQC LAN"
+                                    style={{ padding: '6px 10px', fontSize: '0.85em', background: '#3b82f6', color: 'white', border: 'none' }}
+                                >
+                                    &#10148; Share
+                                </button>
                             </div>
                         </div>
                     ))
                 )}
             </div>
+
+            {credToShare && (
+                <div className="modal-overlay">
+                    <div className="modal-content">
+                        <h2>Share "{credToShare.name}"</h2>
+                        <p style={{ color: '#20c243' }}>Select a peer on your local network to send this credential using Post-Quantum Encryption.</p>
+                        <div style={{ marginTop: '16px', maxHeight: '200px', overflowY: 'auto' }}>
+                            {peers.length === 0 ? (
+                                <p style={{ color: '#888', fontStyle: 'italic' }}>No peers found on LAN...</p>
+                            ) : (
+                                peers.map((p, idx) => (
+                                    <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px', borderBottom: '1px solid #444' }}>
+                                        <span>{p.name} ({p.ip})</span>
+                                        <button 
+                                            className="copy-button"
+                                            onClick={async () => {
+                                                try {
+                                                    await invoke('share_credential', {
+                                                        peerIp: p.ip,
+                                                        peerPort: p.port,
+                                                        peerPk: p.public_key,
+                                                        credentialJson: JSON.stringify(credToShare)
+                                                    });
+                                                    setToast({ message: `Sent credential to ${p.name}!`, duration: 3000 });
+                                                    setTimeout(() => setToast(null), 3000);
+                                                    setCredToShare(null);
+                                                } catch (e) {
+                                                    console.error("Failed to share", e);
+                                                    alert("Failed to share credential: " + e);
+                                                }
+                                            }}
+                                        >
+                                            Send
+                                        </button>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                        <div className="modal-actions" style={{ marginTop: '16px' }}>
+                            <button type="button" className="btn-secondary" onClick={() => setCredToShare(null)}>Cancel</button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {toast && (
                 <div className="toast">
