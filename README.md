@@ -184,7 +184,7 @@ git tag "v1.0.0"
 git push origin main
 git push origin "v1.0.0"
 
-git add . && git commit -m "Bump version to 0.2.0" && git push origin main && git tag v0.2.0 && git push origin v0.2.0
+git add . && git commit -m "Bump version to 0.2.1" && git push origin main && git tag v0.2.1 && git push origin v0.2.1
 ```
 
 Once you run git push origin "v1.0.0", GitHub's automated servers will immediately spin up a Mac, an Ubuntu, and a Windows machine in the cloud. They will build the app and automatically create a Release on your GitHub page containing the `.dmg`, `.deb`, `.AppImage`, and `.msi` installers!

@@ -96,18 +96,24 @@ export default function PassVault() {
 
     useEffect(() => {
         initVault();
+    }, []);
 
+    useEffect(() => {
         // Listen for incoming shares
         const unlisten = listen('incoming-share', async (event) => {
             const { sender, credential } = event.payload;
             if (window.confirm(`User "${sender}" wants to share a credential "${credential.name}" with you. Add to vault?`)) {
                 setCredentials(prev => {
-                    const newCreds = [...prev, { ...credential, id: crypto.randomUUID() }];
+                    // Safe ID generation fallback just in case
+                    const newId = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : Math.random().toString(36).substring(2);
+                    const newCreds = [...prev, { ...credential, id: newId }];
                     // Encrypt and save
                     if (store) {
                         encryptData(newCreds, store).then(encrypted => {
                             store.set("credentials", encrypted);
                             store.save();
+                        }).catch(err => {
+                            console.error("Failed to encrypt shared credential", err);
                         });
                     }
                     return newCreds;
@@ -289,7 +295,7 @@ export default function PassVault() {
                 updatedCreds = credentials.map(c => c.id === newCred.id ? { ...newCred } : c);
                 setToast({ message: "Credential updated", duration: 3000 });
             } else {
-                const newId = crypto.randomUUID();
+                const newId = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : Math.random().toString(36).substring(2);
                 updatedCreds = [...credentials, { ...newCred, id: newId }];
                 setToast({ message: "Credential added", duration: 3000 });
             }
@@ -305,7 +311,7 @@ export default function PassVault() {
             setTimeout(() => setToast(null), 3000);
         } catch (err) {
             console.error("Failed to save credential", err);
-            alert("Error saving credential");
+            alert("Error saving credential: " + err.message);
         }
     };
 
