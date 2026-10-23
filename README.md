@@ -9,6 +9,7 @@ Built with **Tauri + React**, the application provides a simple interface where 
 * 🔐 **Hardware & OS-Native Protection**: Sealed inside OS credential managers (Windows Credential Manager, Apple Keychain, Linux Secret Service)
 * 🛡️ **Zero Plaintext Keys on Disk**: Encryption keys are never stored in plaintext inside `vault.json` or source files
 * 🔑 **Emergency Disaster Recovery Key**: Human-readable recovery code (`TV-XXXX-...`) prevents data loss during OS reinstall or hardware failure
+* Multi-Lingual Script Support: Passphrases can be entered in `English, Tamil (தமிழ்), Kannada (ಕನ್ನಡ), Malayalam (മലയാളം), Hindi (हिन्दी), French (Français), Spanish (Español)`, or any other `Unicode script`.
 * 💾 **Safe Encrypted Backups**: Backups contain only encrypted ciphertext and never leak the vault key
 * 👁️ **Screen Privacy**: Passwords are never displayed in the UI
 * 📋 **One-Click Copy**: Instant clipboard copying with automatic timeout clearing (15s)
@@ -81,7 +82,7 @@ Passvault employs a **Two-Tier Cryptographic Architecture** separating day-to-da
 * Hardware chips (TPM 2.0 / Apple Secure Enclave) and OS user keyrings are tied to a specific machine. If a computer's motherboard fails, hardware is replaced, or the OS is cleanly reinstalled, hardware-bound keys are permanently lost.
 * To prevent catastrophic data loss, Passvault generates a 256-bit **Emergency Recovery Key** formatted as:
   ```text
-  PV-XXXXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX
+  TV-XXXXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX
   ```
 * Users can view and copy their recovery key at any time by clicking **"🔑 Recovery Key"** in the top navigation bar.
 
