@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { load } from "@tauri-apps/plugin-store";
 import { appDataDir } from "@tauri-apps/api/path";
 import { writeText, clear } from "@tauri-apps/plugin-clipboard-manager";
@@ -10,20 +10,7 @@ import About from "./About";
 import './PassVault.css';
 
 // --- Web Crypto Helpers ---
-async function getDeviceKey(storeInstance) {
-    let keyStr = await storeInstance.get("deviceKey");
-    if (!keyStr) {
-        // Generate a completely random 256-bit key on first launch
-        const randomBytes = window.crypto.getRandomValues(new Uint8Array(32));
-        keyStr = Array.from(randomBytes).map(b => b.toString(16).padStart(2, '0')).join('');
-        await storeInstance.set("deviceKey", keyStr);
-        await storeInstance.save();
-    }
-    return keyStr;
-}
-
-async function getEncryptionKey(storeInstance) {
-    const deviceKey = await getDeviceKey(storeInstance);
+async function getEncryptionKey(deviceKey) {
     const enc = new TextEncoder();
     const keyMaterial = await window.crypto.subtle.importKey(
         "raw",
@@ -46,8 +33,8 @@ async function getEncryptionKey(storeInstance) {
     );
 }
 
-async function encryptData(data, storeInstance) {
-    const key = await getEncryptionKey(storeInstance);
+async function encryptData(data, deviceKey) {
+    const key = await getEncryptionKey(deviceKey);
     const iv = window.crypto.getRandomValues(new Uint8Array(12));
     const enc = new TextEncoder();
     const encryptedContent = await window.crypto.subtle.encrypt(
@@ -64,8 +51,8 @@ async function encryptData(data, storeInstance) {
     return Array.from(result);
 }
 
-async function decryptData(dataArray, storeInstance) {
-    const key = await getEncryptionKey(storeInstance);
+async function decryptData(dataArray, deviceKey) {
+    const key = await getEncryptionKey(deviceKey);
     const data = new Uint8Array(dataArray);
     const iv = data.slice(0, 12);
     const ciphertext = data.slice(12);
@@ -83,11 +70,30 @@ async function decryptData(dataArray, storeInstance) {
 
 export default function PassVault() {
     const [credentials, setCredentials] = useState([]);
+        const [isCompact, setIsCompact] = useState(typeof window !== 'undefined' ? window.innerWidth <= 1050 : false);
+
+    useEffect(() => {
+        const handleResize = () => {
+            setIsCompact(window.innerWidth <= 1050);
+        };
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, []);
+
     const [search, setSearch] = useState("");
     const [toast, setToast] = useState(null);
     const [copiedId, setCopiedId] = useState(null);
     const [isAdding, setIsAdding] = useState(false);
     const [isAboutOpen, setIsAboutOpen] = useState(false);
+    const [isRecoveryOpen, setIsRecoveryOpen] = useState(false);
+    const [formattedRecoveryKey, setFormattedRecoveryKey] = useState("");
+    const [vaultKey, setVaultKey] = useState(null);
+    const [decryptRecoveryKey, setDecryptRecoveryKey] = useState("");
+    const [isDecryptModalOpen, setIsDecryptModalOpen] = useState(false);
+    const [decryptModalError, setDecryptModalError] = useState("");
+    const [restoreData, setRestoreData] = useState(null);
+    const [inputRecoveryKey, setInputRecoveryKey] = useState("");
+    const [restoreError, setRestoreError] = useState("");
     const [newCred, setNewCred] = useState({ id: null, name: "", url: "", username: "", password: "", connectionType: "web", remarks: "", installPath: "" });
     const [store, setStore] = useState(null);
 
@@ -104,12 +110,11 @@ export default function PassVault() {
             const { sender, credential } = event.payload;
             if (window.confirm(`User "${sender}" wants to share a credential "${credential.name}" with you. Add to vault?`)) {
                 setCredentials(prev => {
-                    // Safe ID generation fallback just in case
                     const newId = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : Math.random().toString(36).substring(2);
                     const newCreds = [...prev, { ...credential, id: newId }];
-                    // Encrypt and save
-                    if (store) {
-                        encryptData(newCreds, store).then(encrypted => {
+                    // Encrypt and save using OS-protected vaultKey
+                    if (store && vaultKey) {
+                        encryptData(newCreds, vaultKey).then(encrypted => {
                             store.set("credentials", encrypted);
                             store.save();
                         }).catch(err => {
@@ -135,22 +140,82 @@ export default function PassVault() {
             unlisten.then(f => f());
             clearInterval(interval);
         };
-    }, [store]);
+    }, [store, vaultKey]);
 
-    const initVault = async () => {
+    const initVault = async (forcedKey = null) => {
         try {
             const dir = await appDataDir();
             const storeInstance = await load(`${dir}\\vault.json`, { autoSave: false });
             setStore(storeInstance);
 
+            // 1. Retrieve the vault key from OS Keyring (Windows Credential Manager / Apple Keychain / Linux Secret Service)
+            let keyStr = forcedKey;
+            if (!keyStr) {
+                keyStr = await invoke("get_vault_key");
+            }
+
+            let isFirstLaunch = false;
+            // 2. Migration: Check if legacy vault.json contains deviceKey
+            if (!keyStr) {
+                const legacyKey = await storeInstance.get("deviceKey");
+                if (legacyKey) {
+                    // Migrate legacy key into OS Keyring!
+                    await invoke("set_vault_key", { key: legacyKey });
+                    // Wipe deviceKey from vault.json so it is no longer stored in plaintext!
+                    await storeInstance.delete("deviceKey");
+                    await storeInstance.save();
+                    keyStr = legacyKey;
+                } else {
+                    const existingEncrypted = await storeInstance.get("credentials");
+                    if (existingEncrypted && Array.isArray(existingEncrypted) && existingEncrypted.length > 0) {
+                        // Existing vault on disk without key in OS keyring! Do NOT overwrite with a random key!
+                        setIsDecryptModalOpen(true);
+                        setToast({ message: "Existing vault detected! Enter your Recovery Key to restore OS access.", duration: 6000 });
+                        return;
+                    } else {
+                        // Fresh install: Generate a 256-bit secure key and store in OS Keyring
+                        keyStr = await invoke("generate_vault_key");
+                        await invoke("set_vault_key", { key: keyStr });
+                        isFirstLaunch = true;
+                    }
+                }
+            } else {
+                // Ensure legacy deviceKey is not lingering in vault.json
+                if (await storeInstance.has("deviceKey")) {
+                    await storeInstance.delete("deviceKey");
+                    await storeInstance.save();
+                }
+            }
+
+            setVaultKey(keyStr);
+
+            // Format recovery key for disaster recovery
+            try {
+                const formatted = await invoke("format_recovery_key", { key: keyStr });
+                setFormattedRecoveryKey(formatted);
+                if (isFirstLaunch) {
+                    setIsRecoveryOpen(true);
+                }
+            } catch (e) {
+                console.error("Failed to format recovery key", e);
+            }
+
+            // 3. Decrypt credentials with the OS-protected key
             const encryptedCreds = await storeInstance.get("credentials");
             if (encryptedCreds) {
                 try {
-                    const decrypted = await decryptData(encryptedCreds, storeInstance);
+                    const decrypted = await decryptData(encryptedCreds, keyStr);
                     setCredentials(decrypted);
                 } catch (err) {
-                    console.error("Failed to decrypt credentials", err);
+                    console.error("Failed to decrypt credentials with key", err);
+                    setToast({
+                        message: "Unable to decrypt vault with stored OS key. Enter your Recovery Key to unlock it.",
+                        duration: 6000
+                    });
+                    setIsDecryptModalOpen(true);
                 }
+            } else {
+                setCredentials([]);
             }
         } catch (err) {
             console.error("Failed to init vault", err);
@@ -187,8 +252,118 @@ export default function PassVault() {
         }
     };
 
+
+    const copyBothTimerRef = useRef(null);
+    const clearClipboardTimerRef = useRef(null);
+
+    const handleAutoType = async (cred) => {
+        try {
+            const isTerminal = cred.connectionType === 'putty' || cred.connectionType === 'powershell' || cred.connectionType === 'terminal' || cred.connectionType === 'ssh';
+            const isPam = cred.connectionType === 'pam';
+            setToast({ 
+                message: `⚡ Minimizing to auto-type ${isTerminal ? 'into terminal (Enter + 800ms delay)...' : isPam ? 'with PAM keystroke pacing...' : 'into active window...'}`, 
+                duration: 4000 
+            });
+            await invoke("auto_type", {
+                username: cred.username || null,
+                password: cred.password || null,
+                connectionType: cred.connectionType || "web",
+                interKeyDelayMs: isPam ? 30 : null
+            });
+        } catch (err) {
+            console.error("Auto-type failed", err);
+            setToast({ message: `Auto-type error: ${err}`, duration: 5000 });
+            setTimeout(() => setToast(null), 5000);
+        }
+    };
+
+    const handleCopyBoth = async (cred) => {
+        if (!cred.username && !cred.password) return;
+        if (!cred.username) return handleCopy(cred, 'password');
+        if (!cred.password) return handleCopy(cred, 'username');
+
+        try {
+            if (copyBothTimerRef.current) clearTimeout(copyBothTimerRef.current);
+            if (clearClipboardTimerRef.current) clearTimeout(clearClipboardTimerRef.current);
+
+            // Step 1: Copy Username
+            await writeText(cred.username);
+            setCopiedId(`${cred.id}-both-user`);
+            setToast({ 
+                message: "📋 [1/2] Username copied! Paste it now ➔ Password in 5s...", 
+                duration: 5000 
+            });
+
+            // Step 2: Switch to Password after 5s
+            copyBothTimerRef.current = setTimeout(async () => {
+                try {
+                    await writeText(cred.password);
+                    setCopiedId(`${cred.id}-both-pass`);
+                    setToast({ 
+                        message: "📋 [2/2] Password now in clipboard! Paste it (clears in 15s).", 
+                        duration: 15000 
+                    });
+
+                    // Step 3: Clear clipboard after 15s
+                    clearClipboardTimerRef.current = setTimeout(async () => {
+                        setCopiedId(null);
+                        setToast(null);
+                        try {
+                            await clear();
+                        } catch (e) {
+                            console.error("Failed to clear clipboard", e);
+                        }
+                    }, 15000);
+                } catch (e) {
+                    console.error("Failed to copy password in queue", e);
+                }
+            }, 5000);
+
+        } catch (err) {
+            console.error("Failed in sequential copy", err);
+            setToast({ message: "Failed to copy", duration: 3000 });
+            setTimeout(() => setToast(null), 3000);
+        }
+    };
+
+    
+    const handleRecoverVault = async (e) => {
+        e.preventDefault();
+        if (!decryptRecoveryKey.trim()) return;
+        setDecryptModalError("");
+        try {
+            const cleanKey = await invoke("normalize_recovery_key", { input: decryptRecoveryKey.trim() });
+            const encryptedCreds = await store.get("credentials");
+            if (!encryptedCreds) {
+                throw new Error("No encrypted credentials found in vault store.");
+            }
+            const decrypted = await decryptData(encryptedCreds, cleanKey);
+            if (!Array.isArray(decrypted)) {
+                throw new Error("Invalid decrypted vault structure.");
+            }
+
+            // Key verified! Save key to OS Credential Manager
+            await invoke("set_vault_key", { key: cleanKey });
+            setVaultKey(cleanKey);
+            setCredentials(decrypted);
+            
+            try {
+                const formatted = await invoke("format_recovery_key", { key: cleanKey });
+                setFormattedRecoveryKey(formatted);
+            } catch (err) {}
+
+            setIsDecryptModalOpen(false);
+            setDecryptRecoveryKey("");
+            setToast({ message: "✓ Vault successfully unlocked and key saved to OS Credential Manager!", duration: 5000 });
+            setTimeout(() => setToast(null), 5000);
+        } catch (err) {
+            console.error("Vault recovery failed:", err);
+            setDecryptModalError(typeof err === 'string' ? err : (err.message || "Failed to decrypt vault with this key. Please check your recovery code."));
+        }
+    };
+
     const handleMove = async (id, direction) => {
-        if (!store || search) return;
+        if (!store || !vaultKey || search) return;
         const index = credentials.findIndex(c => c.id === id);
         if (index === -1) return;
         
@@ -201,7 +376,7 @@ export default function PassVault() {
         updatedCreds[newIndex] = temp;
 
         try {
-            const encrypted = await encryptData(updatedCreds, store);
+            const encrypted = await encryptData(updatedCreds, vaultKey);
             await store.set("credentials", encrypted);
             await store.save();
             setCredentials(updatedCreds);
@@ -213,12 +388,15 @@ export default function PassVault() {
 
     const handleBackup = async () => {
         try {
-            if (!store) return;
-            const deviceKey = await store.get("deviceKey");
+            if (!store || !vaultKey) return;
             const encryptedCreds = await store.get("credentials");
             
+            // DO NOT export deviceKey in plaintext!
             const backupData = {
-                deviceKey,
+                version: 2,
+                app: "PassVault",
+                type: "encrypted-vault-backup",
+                createdAt: new Date().toISOString(),
                 credentials: encryptedCreds || []
             };
             
@@ -232,8 +410,11 @@ export default function PassVault() {
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
             
-            setToast({ message: "Backup successfully downloaded", duration: 3000 });
-            setTimeout(() => setToast(null), 3000);
+            setToast({
+                message: "Encrypted backup downloaded. Keep your Emergency Recovery Key to restore it on any device.",
+                duration: 5000
+            });
+            setTimeout(() => setToast(null), 5000);
         } catch (err) {
             console.error("Backup failed", err);
             setToast({ message: "Backup failed", duration: 3000 });
@@ -249,35 +430,102 @@ export default function PassVault() {
             const file = e.target.files[0];
             if (!file) return;
             
-            if (!window.confirm("Restoring will overwrite your current vault on this device. Are you sure you want to proceed?")) return;
-            
             const reader = new FileReader();
             reader.onload = async (event) => {
                 try {
                     const data = JSON.parse(event.target.result);
-                    if (!data.deviceKey || !data.credentials) {
-                        throw new Error("Invalid backup file format");
+                    if (!data.credentials) {
+                        throw new Error("Invalid backup file format: missing credentials payload");
                     }
-                    
-                    if (store) {
-                        await store.set("deviceKey", data.deviceKey);
-                        await store.set("credentials", data.credentials);
-                        await store.save();
-                        
-                        initVault(); // Re-init to decrypt with the restored key
-                        
-                        setToast({ message: "Restore successful", duration: 3000 });
-                        setTimeout(() => setToast(null), 3000);
+
+                    // Case 1: Legacy v1 backup containing data.deviceKey
+                    if (data.deviceKey) {
+                        if (!window.confirm("Restore this legacy backup? It will update your vault and import its key into your OS Keyring.")) return;
+                        await invoke("set_vault_key", { key: data.deviceKey });
+                        if (store) {
+                            await store.set("credentials", data.credentials);
+                            if (await store.has("deviceKey")) {
+                                await store.delete("deviceKey");
+                            }
+                            await store.save();
+                        }
+                        await initVault(data.deviceKey);
+                        setToast({ message: "Legacy vault restored and migrated to OS Keyring successfully!", duration: 4000 });
+                        setTimeout(() => setToast(null), 4000);
+                        return;
                     }
+
+                    // Case 2: Standard v2 encrypted backup
+                    // Try to decrypt with current vaultKey first
+                    let canDecryptWithCurrentKey = false;
+                    if (vaultKey) {
+                        try {
+                            const testDecrypted = await decryptData(data.credentials, vaultKey);
+                            if (Array.isArray(testDecrypted)) {
+                                canDecryptWithCurrentKey = true;
+                                if (!window.confirm("Restore this backup? It will replace your current vault on this device.")) return;
+                                if (store) {
+                                    await store.set("credentials", data.credentials);
+                                    await store.save();
+                                }
+                                setCredentials(testDecrypted);
+                                setToast({ message: "Vault restored successfully!", duration: 3000 });
+                                setTimeout(() => setToast(null), 3000);
+                                return;
+                            }
+                        } catch (e) {
+                            canDecryptWithCurrentKey = false;
+                        }
+                    }
+
+                    // If current key cannot decrypt it, prompt for the Emergency Recovery Key!
+                    setRestoreData(data);
+                    setInputRecoveryKey("");
+                    setRestoreError("");
                 } catch (err) {
                     console.error("Restore failed", err);
-                    setToast({ message: "Restore failed: Invalid file format", duration: 3000 });
-                    setTimeout(() => setToast(null), 3000);
+                    setToast({ message: "Restore failed: " + err.message, duration: 4000 });
+                    setTimeout(() => setToast(null), 4000);
                 }
             };
             reader.readAsText(file);
         };
         input.click();
+    };
+
+    const handleConfirmRestoreWithKey = async (e) => {
+        e.preventDefault();
+        if (!restoreData || !inputRecoveryKey) return;
+        setRestoreError("");
+        try {
+            const normalizedKey = await invoke("normalize_recovery_key", { input: inputRecoveryKey });
+            const decrypted = await decryptData(restoreData.credentials, normalizedKey);
+            if (!Array.isArray(decrypted)) {
+                throw new Error("Invalid decrypted structure");
+            }
+
+            // Key is valid! Save key into OS Keyring
+            await invoke("set_vault_key", { key: normalizedKey });
+            if (store) {
+                await store.set("credentials", restoreData.credentials);
+                if (await store.has("deviceKey")) {
+                    await store.delete("deviceKey");
+                }
+                await store.save();
+            }
+            setVaultKey(normalizedKey);
+            setCredentials(decrypted);
+
+            const formatted = await invoke("format_recovery_key", { key: normalizedKey });
+            setFormattedRecoveryKey(formatted);
+            setRestoreData(null);
+
+            setToast({ message: "Vault and key restored successfully into OS Keyring!", duration: 4000 });
+            setTimeout(() => setToast(null), 4000);
+        } catch (err) {
+            console.error("Invalid recovery key for restore", err);
+            setRestoreError("The recovery key could not decrypt this backup. Please verify your key and try again.");
+        }
     };
 
     const handleOpenEdit = (cred) => {
@@ -287,7 +535,7 @@ export default function PassVault() {
 
     const handleSaveCredential = async (e) => {
         e.preventDefault();
-        if (!store) return;
+        if (!store || !vaultKey) return;
 
         try {
             let updatedCreds;
@@ -300,7 +548,7 @@ export default function PassVault() {
                 setToast({ message: "Credential added", duration: 3000 });
             }
 
-            const encrypted = await encryptData(updatedCreds, store);
+            const encrypted = await encryptData(updatedCreds, vaultKey);
             await store.set("credentials", encrypted);
             await store.save();
 
@@ -316,13 +564,13 @@ export default function PassVault() {
     };
 
     const handleDelete = async (id) => {
-        if (!store) return;
+        if (!store || !vaultKey) return;
         if (!window.confirm("Are you sure you want to delete this credential?")) return;
 
         try {
             const updatedCreds = credentials.filter(c => c.id !== id);
 
-            const encrypted = await encryptData(updatedCreds, store);
+            const encrypted = await encryptData(updatedCreds, vaultKey);
             await store.set("credentials", encrypted);
             await store.save();
 
@@ -453,11 +701,14 @@ export default function PassVault() {
                 <h1>
                     <span>&#128272;</span> Passvault
                 </h1>
-                <div style={{ display: 'flex', gap: '10px' }}>
-                    <button className="add-button" style={{ background: '#555' }} onClick={handleBackup} title="Export Vault">
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <button className="add-button" style={{ background: '#107c41', display: 'flex', alignItems: 'center', gap: '4px' }} onClick={() => setIsRecoveryOpen(true)} title="View Emergency Recovery Key">
+                        🔑 Recovery Key
+                    </button>
+                    <button className="add-button" style={{ background: '#555' }} onClick={handleBackup} title="Export Encrypted Vault Backup">
                         Backup
                     </button>
-                    <button className="add-button" style={{ background: '#555' }} onClick={handleRestore} title="Import Vault">
+                    <button className="add-button" style={{ background: '#555' }} onClick={handleRestore} title="Import / Restore Vault Backup">
                         Restore
                     </button>
                     <button className="add-button" style={{ background: '#555' }} onClick={() => setIsAboutOpen(true)}>
@@ -512,19 +763,15 @@ export default function PassVault() {
                 ) : (
                     filteredCreds.map(cred => (
                         <div key={cred.id} className="credential-card">
-                            <div className="credential-info" style={{ flex: 1, minWidth: 0, paddingRight: '1px' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '1px', overflow: 'hidden' }}>
-                                    <h3 style={{ margin: 0, whiteSpace: 'nowrap', flexShrink: 0 }}>{cred.name}</h3>
-                                    {cred.remarks && (
-                                        <span style={{ fontSize: '0.85em', color: '#666', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flexShrink: 1 }}>
-                                            &#128221; {cred.remarks}
-                                        </span>
-                                    )}
+                            <div className="credential-info" style={{ flex: 1, minWidth: 0, paddingRight: '12px' }}>
+                                {/* Row 1: Name + Protocol Badge + Remarks */}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden', flexWrap: 'wrap' }}>
+                                    <h3 style={{ margin: 0, whiteSpace: 'nowrap', fontSize: '1.05rem', fontWeight: 600 }}>{cred.name}</h3>
                                     <span 
                                         className="badge" 
-                                        style={{ textTransform: (cred.connectionType === 'pam' || cred.connectionType === 'vpn') ? 'uppercase' : 'capitalize', fontSize: '0.75rem', flexShrink: 0, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                        style={{ textTransform: (cred.connectionType === 'pam' || cred.connectionType === 'vpn') ? 'uppercase' : 'capitalize', fontSize: '0.72rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
                                         onClick={() => handleConnect(cred)}
-                                        title="Connect / Open"
+                                        title="Click to Connect / Open"
                                     >
                                         {cred.connectionType === 'pgadmin' ? '🐘 ' : 
                                          cred.connectionType === 'mysqlworkbench' ? '🐬 ' :
@@ -532,115 +779,165 @@ export default function PassVault() {
                                          cred.connectionType === 'powershell' ? '⚡ ' : 
                                          cred.connectionType === 'pam' ? '🛡️ ' :
                                          cred.connectionType === 'vpn' ? '🔒 ' :
-                                         <img src={getFaviconUrl(cred.url)} width="14" height="14" onError={(e) => { e.target.onerror = null; e.target.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">🌐</text></svg>'; }} alt="🌐"/>}
+                                         <img src={getFaviconUrl(cred.url)} width="13" height="13" onError={(e) => { e.target.onerror = null; e.target.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">🌐</text></svg>'; }} alt="🌐"/>}
                                         {cred.connectionType || 'web'}
                                     </span>
-                                    {cred.url && (
-                                        <span 
-                                            style={{ fontSize: '0.85rem', color: '#666', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flexShrink: 1, cursor: 'pointer', textDecoration: copiedId === `${cred.id}-url` ? 'underline' : 'none' }}
-                                            onClick={() => handleCopy(cred, 'url')}
-                                            title="Click to copy URL"
-                                        >
-                                            &#127760; {copiedId === `${cred.id}-url` ? "Copied!" : cred.url}
+                                    {cred.remarks && (
+                                        <span style={{ fontSize: '0.8rem', color: '#888', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '200px' }} title={cred.remarks}>
+                                            &#128221; {cred.remarks}
                                         </span>
                                     )}
                                 </div>
-                                <div className="credential-meta" style={{ marginTop: '4px' }}>
-                                    {cred.username && <span>&#128100; {cred.username}</span>}
+
+                                {/* Row 2: Website / URL and Username (Always visible so user knows which website and which credentials) */}
+                                <div className="credential-meta" style={{ marginTop: '5px', display: 'flex', gap: '14px', alignItems: 'center', flexWrap: 'wrap' }}>
+                                    {cred.url && (
+                                        <span 
+                                            style={{ fontSize: '0.82rem', color: '#666', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                            onClick={() => handleCopy(cred, 'url')}
+                                            title="Click to copy Website / URL"
+                                        >
+                                            🌐 <span style={{ textDecoration: copiedId === `${cred.id}-url` ? 'underline' : 'none', fontWeight: 500 }}>
+                                                {copiedId === `${cred.id}-url` ? "Copied!" : cred.url}
+                                            </span>
+                                        </span>
+                                    )}
+                                    {cred.username && (
+                                        <span 
+                                            style={{ fontSize: '0.82rem', color: '#444', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                            onClick={() => handleCopy(cred, 'username')}
+                                            title="Click to copy Username"
+                                        >
+                                            👤 <span style={{ textDecoration: copiedId === `${cred.id}-username` ? 'underline' : 'none', fontWeight: 500 }}>
+                                                {copiedId === `${cred.id}-username` ? "Copied!" : cred.username}
+                                            </span>
+                                        </span>
+                                    )}
                                 </div>
                             </div>
-                            <div style={{ display: "flex", gap: "4px", alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                                <button
-                                    className="add-button"
-                                    onClick={() => handleMove(cred.id, -1)}
-                                    disabled={search !== ""}
-                                    title="Move Up"
-                                >
-                                    &#8593;
-                                </button>
-                                <button
-                                    className="add-button"
-                                    onClick={() => handleMove(cred.id, 1)}
-                                    disabled={search !== ""}
-                                    title="Move Down"
-                                >
-                                    &#8595;
-                                </button>
-                                <button
-                                    className={`copy-button ${copiedId === `${cred.id}-username` ? 'copied' : ''}`}
-                                    onClick={() => handleCopy(cred, 'username')}
-                                    style={{ padding: '6px 10px', fontSize: '0.85em' }}
-                                >
-                                    {copiedId === `${cred.id}-username` ? "Copied!" : "Copy User"}
-                                </button>
 
-                                <button
+                            <div className={`credential-actions ${isCompact ? 'compact' : ''}`} style={{ flexShrink: 0, display: 'flex', gap: '4px', alignItems: 'center' }}>
+                                {(cred.username || cred.password) && (
+                                    <button 
+                                        className="autotype-button"
+                                        onClick={() => handleAutoType(cred)}
+                                        title={`⚡ Auto-Type (${cred.connectionType === 'putty' || cred.connectionType === 'powershell' ? 'Terminal: user ➔ Enter ➔ wait ➔ pass' : cred.connectionType === 'pam' ? 'PAM: paced keystrokes' : 'Web: user ➔ Tab ➔ pass'})`}
+                                    >
+                                        <span className="btn-icon">⚡</span>
+                                        <span className="btn-label">Auto-Type</span>
+                                    </button>
+                                )}
+                                {cred.username && cred.password && (
+                                    <button 
+                                        className={`copy-both-button ${copiedId && copiedId.startsWith(`${cred.id}-both`) ? 'copied' : ''}`}
+                                        onClick={() => handleCopyBoth(cred)}
+                                        title="Sequential Copy: Copies Username now, switches to Password in 5s"
+                                    >
+                                        <span className="btn-icon">📋➔🔑</span>
+                                        <span className="btn-label">
+                                            {copiedId === `${cred.id}-both-user` ? "User Copied!" : copiedId === `${cred.id}-both-pass` ? "Pass Ready!" : "Copy Both"}
+                                        </span>
+                                    </button>
+                                )}
+                               {cred.username && (
+                                    <button 
+                                        className={`copy-button ${copiedId === `${cred.id}-username` ? 'copied' : ''}`}
+                                        onClick={() => handleCopy(cred, 'username')}
+                                        title={`Copy Username: ${cred.username}`}
+                                    >
+                                        <span className="btn-icon">👤</span>
+                                        <span className="btn-label">{copiedId === `${cred.id}-username` ? "Copied!" : cred.username}</span>
+                                    </button>
+                                )}
+                                <button 
                                     className={`copy-button ${copiedId === `${cred.id}-password` ? 'copied' : ''}`}
                                     onClick={() => handleCopy(cred, 'password')}
-                                    style={{ padding: '6px 10px', fontSize: '0.85em' }}
+                                    title="Copy Password"
                                 >
-                                    {copiedId === `${cred.id}-password` ? "Copied!" : "Copy Pass"}
+                                    <span className="btn-icon">🔑</span>
+                                    <span className="btn-label">{copiedId === `${cred.id}-password` ? "Copied!" : "Password"}</span>
+                                </button>
+                                
+                                <button
+                                    className="copy-button btn-share"
+                                    style={{ background: '#2563eb' }}
+                                    onClick={() => setCredToShare(cred)}
+                                    title="Share Credential over LAN"
+                                >
+                                    <span className="btn-icon">📡</span>
+                                    <span className="btn-label">Share</span>
                                 </button>
 
-                                <button
-                                    className="add-button"
-                                    style={{ padding: '6px 10px', border: '1px solid #aaa', color: 'inherit', background: 'transparent', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85em' }}
+                                <button 
+                                    className="edit-button" 
                                     onClick={() => handleOpenEdit(cred)}
                                     title="Edit"
                                 >
-                                    &#9998; Edit
+                                    ✎
                                 </button>
-
-                                <button
-                                    className="delete-button"
+                                <button 
+                                    className="delete-button" 
                                     onClick={() => handleDelete(cred.id)}
                                     title="Delete"
-                                    style={{ padding: '6px 10px', fontSize: '0.85em' }}
                                 >
-                                    &#128465;
+                                    🗑️
                                 </button>
-                                <button
-                                    className="add-button"
-                                    onClick={() => setCredToShare(cred)}
-                                    title="Share via PQC LAN"
-                                    style={{ padding: '6px 10px', fontSize: '0.85em', background: '#3b82f6', color: 'white', border: 'none' }}
-                                >
-                                    &#10148; Share
-                                </button>
+                                 <div style={{ flexDirection: 'column', gap: '2px', marginRight: '2px' }}>
+                                    <button 
+                                        className="btn-move" 
+                                        onClick={() => handleMove(cred.id, -1)}
+                                        title="Move up"
+                                        disabled={!!search}
+                                    >
+                                        ▲
+                                    </button>
+                                    <button 
+                                        className="btn-move" 
+                                        onClick={() => handleMove(cred.id, 1)}
+                                        title="Move down"
+                                        disabled={!!search}
+                                    >
+                                        ▼
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     ))
                 )}
             </div>
 
+            {/* Share Modal */}
             {credToShare && (
                 <div className="modal-overlay">
                     <div className="modal-content">
                         <h2>Share "{credToShare.name}"</h2>
-                        <p style={{ color: '#20c243' }}>Select a peer on your local network to send this credential using Post-Quantum Encryption.</p>
-                        <div style={{ marginTop: '16px', maxHeight: '200px', overflowY: 'auto' }}>
+                        <p style={{ color: '#666', fontSize: '0.9em' }}>Select a nearby peer to share securely over LAN (PQC-Encrypted via Kyber768):</p>
+                        
+                        <div style={{ maxHeight: '200px', overflowY: 'auto', margin: '15px 0' }}>
                             {peers.length === 0 ? (
-                                <p style={{ color: '#888', fontStyle: 'italic' }}>No peers found on LAN...</p>
+                                <p style={{ fontStyle: 'italic', color: '#888' }}>Looking for peers on local network...</p>
                             ) : (
                                 peers.map((p, idx) => (
-                                    <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px', borderBottom: '1px solid #444' }}>
-                                        <span>{p.name} ({p.ip})</span>
+                                    <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px', borderBottom: '1px solid #eee' }}>
+                                        <div>
+                                            <strong>{p.name}</strong>
+                                            <div style={{ fontSize: '0.8em', color: '#666' }}>{p.ip}:{p.port}</div>
+                                        </div>
                                         <button 
                                             className="copy-button"
                                             onClick={async () => {
                                                 try {
-                                                    await invoke('share_credential', {
+                                                    await invoke("share_credential", {
                                                         peerIp: p.ip,
                                                         peerPort: p.port,
                                                         peerPk: p.public_key,
                                                         credentialJson: JSON.stringify(credToShare)
                                                     });
-                                                    setToast({ message: `Sent credential to ${p.name}!`, duration: 3000 });
+                                                    setToast({ message: `Sent to ${p.name}!`, duration: 3000 });
                                                     setTimeout(() => setToast(null), 3000);
                                                     setCredToShare(null);
-                                                } catch (e) {
-                                                    console.error("Failed to share", e);
-                                                    alert("Failed to share credential: " + e);
+                                                } catch(err) {
+                                                    alert("Share failed: " + err);
                                                 }
                                             }}
                                         >
@@ -657,6 +954,7 @@ export default function PassVault() {
                 </div>
             )}
 
+            {/* Toast Notifications */}
             {toast && (
                 <div className="toast">
                     <div className="toast-message">{toast.message}</div>
@@ -664,6 +962,7 @@ export default function PassVault() {
                 </div>
             )}
 
+            {/* Add / Edit Credential Modal */}
             {isAdding && (
                 <div className="modal-overlay">
                     <div className="modal-content">
@@ -724,6 +1023,146 @@ export default function PassVault() {
                             <div className="modal-actions">
                                 <button type="button" className="btn-secondary" onClick={() => setIsAdding(false)}>Cancel</button>
                                 <button type="submit" className="copy-button">Save</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {/* Emergency Recovery Key Modal */}
+            {isRecoveryOpen && (
+                <div className="modal-overlay" style={{ zIndex: 1100 }}>
+                    <div className="modal-content" style={{ maxWidth: '520px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
+                            <span style={{ fontSize: '1.8rem' }}>🔑</span>
+                            <h2 style={{ margin: 0 }}>Emergency Recovery Key</h2>
+                        </div>
+                        <p style={{ color: '#666', fontSize: '0.92rem', lineHeight: '1.5' }}>
+                            Your vault encryption key is stored securely in your <strong>Operating System's Credential Manager</strong>. It is never stored in plaintext on disk.
+                        </p>
+                        
+                        <div style={{
+                            margin: '16px 0',
+                            padding: '16px',
+                            background: '#f8fafc',
+                            borderRadius: '8px',
+                            border: '1px solid #e2e8f0'
+                        }}>
+                            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>
+                                Your 256-Bit Emergency Recovery Code
+                            </label>
+                            <div style={{
+                                fontFamily: 'monospace',
+                                fontSize: '0.95rem',
+                                wordBreak: 'break-all',
+                                background: '#ffffff',
+                                border: '1px solid #cbd5e1',
+                                borderRadius: '6px',
+                                padding: '12px',
+                                color: '#0f172a',
+                                fontWeight: 700,
+                                userSelect: 'all',
+                                textAlign: 'center',
+                                letterSpacing: '0.03em'
+                            }}>
+                                {formattedRecoveryKey || "Loading..."}
+                            </div>
+                            <button
+                                type="button"
+                                className="copy-button"
+                                style={{ width: '100%', marginTop: '12px', padding: '10px' }}
+                                onClick={async () => {
+                                    if (formattedRecoveryKey) {
+                                        await writeText(formattedRecoveryKey);
+                                        setToast({ message: "Emergency Recovery Key copied to clipboard! Save it securely.", duration: 5000 });
+                                        setTimeout(() => setToast(null), 5000);
+                                    }
+                                }}
+                            >
+                                📋 Copy Emergency Recovery Key
+                            </button>
+                        </div>
+
+                        <div style={{ background: '#fffbeb', border: '1px solid #fef08a', borderRadius: '6px', padding: '12px', fontSize: '0.85rem', color: '#854d0e', lineHeight: '1.4' }}>
+                            ⚠️ <strong>Disaster Recovery Note:</strong> If your computer's motherboard dies, hardware is replaced, or your OS is reinstalled, this Recovery Key is the <strong>ONLY</strong> way to restore your passwords. Save it to a safe place or print it.
+                        </div>
+
+                        <div className="modal-actions" style={{ marginTop: '20px' }}>
+                            <button type="button" className="copy-button" onClick={() => setIsRecoveryOpen(false)}>
+                                I Have Saved My Key
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            
+            {/* Decrypt Failed / Emergency Recovery Modal */}
+            {isDecryptModalOpen && (
+                <div className="modal-overlay" style={{ zIndex: 1200 }}>
+                    <div className="modal-content" style={{ maxWidth: '480px' }}>
+                        <h2>🔑 Unlock Vault with Recovery Key</h2>
+                        <p style={{ color: '#666', fontSize: '0.9rem', lineHeight: '1.4' }}>
+                            The stored OS key could not decrypt your vault. Enter your <strong>Emergency Recovery Key</strong> to unlock your vault and save it to your local OS Credential Manager:
+                        </p>
+                        <form onSubmit={handleRecoverVault}>
+                            <div className="form-group" style={{ marginTop: '14px' }}>
+                                <label>Emergency Recovery Key</label>
+                                <textarea
+                                    required
+                                    rows="3"
+                                    className="form-textarea"
+                                    style={{ fontFamily: 'monospace', fontSize: '0.9rem' }}
+                                    placeholder="Paste PV-XXXXXXXX-... or 64-character hex key"
+                                    value={decryptRecoveryKey}
+                                    onChange={e => setDecryptRecoveryKey(e.target.value)}
+                                    autoFocus
+                                />
+                            </div>
+                            {decryptModalError && (
+                                <div style={{ color: '#dc2626', background: '#fef2f2', padding: '8px 12px', borderRadius: '6px', fontSize: '0.85rem', marginBottom: '12px' }}>
+                                    {decryptModalError}
+                                </div>
+                            )}
+                            <div className="modal-actions">
+                                <button type="button" className="btn-secondary" onClick={() => setIsDecryptModalOpen(false)}>Cancel</button>
+                                <button type="submit" className="copy-button">Unlock &amp; Save Key to OS</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {/* Restore with Foreign Recovery Key Modal */}
+            {restoreData && (
+                <div className="modal-overlay" style={{ zIndex: 1200 }}>
+                    <div className="modal-content" style={{ maxWidth: '480px' }}>
+                        <h2>🔑 Enter Recovery Key</h2>
+                        <p style={{ color: '#666', fontSize: '0.9rem' }}>
+                            This backup was encrypted with a different key than your local OS Keyring. Enter the Emergency Recovery Key for this backup to restore it:
+                        </p>
+                        <form onSubmit={handleConfirmRestoreWithKey}>
+                            <div className="form-group" style={{ marginTop: '14px' }}>
+                                <label>Emergency Recovery Key</label>
+                                <textarea
+                                    required
+                                    rows="3"
+                                    className="form-textarea"
+                                    style={{ fontFamily: 'monospace', fontSize: '0.9rem' }}
+                                    placeholder="Paste PV-XXXX-... or 64-character hex key"
+                                    value={inputRecoveryKey}
+                                    onChange={e => setInputRecoveryKey(e.target.value)}
+                                    autoFocus
+                                />
+                            </div>
+                            {restoreError && (
+                                <div style={{ color: '#dc2626', background: '#fef2f2', padding: '8px 12px', borderRadius: '6px', fontSize: '0.85rem', marginBottom: '12px' }}>
+                                    {restoreError}
+                                </div>
+                            )}
+                            <div className="modal-actions">
+                                <button type="button" className="btn-secondary" onClick={() => setRestoreData(null)}>Cancel</button>
+                                <button type="submit" className="copy-button">Restore &amp; Save Key to OS</button>
                             </div>
                         </form>
                     </div>

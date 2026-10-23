@@ -114,3 +114,28 @@
     transform: translateY(0);
   }
 }
+
+.login-recovery-link {
+  background: none;
+  border: none;
+  color: #0f62fe;
+  cursor: pointer;
+  font-size: 0.88rem;
+  text-decoration: underline;
+  transition: color 0.2s;
+  padding: 4px;
+}
+
+.login-recovery-link:hover {
+  color: #0353e9;
+}
+
+@media (prefers-color-scheme: dark) {
+  .login-recovery-link {
+    color: #87b0ff;
+  }
+  .login-recovery-link:hover {
+    color: #a6c8ff;
+  }
+}
+

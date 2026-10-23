@@ -6,6 +6,10 @@ export default function Login({ onLoginSuccess }) {
   const [errorMsg, setErrorMsg] = useState("");
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [biometryAvailable, setBiometryAvailable] = useState(false);
+  const [showRecoveryModal, setShowRecoveryModal] = useState(false);
+  const [recoveryInput, setRecoveryInput] = useState("");
+  const [recoveryError, setRecoveryError] = useState("");
+  const [isRestoringKey, setIsRestoringKey] = useState(false);
 
   useEffect(() => {
     // Check if biometric authentication is available on mount
@@ -26,7 +30,6 @@ export default function Login({ onLoginSuccess }) {
     setErrorMsg("");
     try {
       // Prompt native OS authentication (Windows Hello / Touch ID)
-      // If authentication fails, it will throw an error and go to the catch block
       await invoke('plugin:biometry|authenticate', {
         reason: "Log in to Passvault",
         options: {
@@ -38,10 +41,27 @@ export default function Login({ onLoginSuccess }) {
       onLoginSuccess();
     } catch (err) {
       console.error("Biometry auth error:", err);
-      // Fallback or show error
       setErrorMsg(typeof err === 'string' ? err : "Biometric authentication failed or was canceled.");
     } finally {
       setIsAuthenticating(false);
+    }
+  };
+
+  const handleRestoreWithKey = async (e) => {
+    e.preventDefault();
+    if (!recoveryInput.trim()) return;
+    setIsRestoringKey(true);
+    setRecoveryError("");
+    try {
+      const cleanKey = await invoke("normalize_recovery_key", { input: recoveryInput.trim() });
+      await invoke("set_vault_key", { key: cleanKey });
+      setShowRecoveryModal(false);
+      onLoginSuccess();
+    } catch (err) {
+      console.error("Failed to restore with recovery key:", err);
+      setRecoveryError(typeof err === 'string' ? err : "Invalid recovery key format (expected 64 hex characters or PV-XXXX code).");
+    } finally {
+      setIsRestoringKey(false);
     }
   };
 
@@ -71,7 +91,117 @@ export default function Login({ onLoginSuccess }) {
             Note: Biometric authentication may not be configured on your system.
           </p>
         )}
+
+        <div style={{ marginTop: '24px', paddingTop: '16px', borderTop: '1px solid #eaeaea' }}>
+          <button
+            type="button"
+            className="login-recovery-link"
+            onClick={() => {
+              setRecoveryInput("");
+              setRecoveryError("");
+              setShowRecoveryModal(true);
+            }}
+          >
+            🔑 Restore Vault with Recovery Key
+          </button>
+        </div>
       </div>
+
+      {showRecoveryModal && (
+        <div className="modal-overlay" style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.5)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 1000
+        }}>
+          <div className="modal-content" style={{
+            background: 'white',
+            padding: '28px',
+            borderRadius: '12px',
+            maxWidth: '480px',
+            width: '90%',
+            color: '#333',
+            textAlign: 'left',
+            boxShadow: '0 10px 30px rgba(0,0,0,0.2)'
+          }}>
+            <h3 style={{ margin: '0 0 10px', display: 'flex', alignItems: 'center', gap: '8px', color: '#111' }}>
+              <span>🔑</span> Restore with Recovery Key
+            </h3>
+            <p style={{ fontSize: '0.88rem', color: '#666', lineHeight: '1.4', margin: '0 0 16px' }}>
+              Moving to a new PC or recovered from an OS reinstall? Enter your <strong>Emergency Recovery Key</strong> to save it into your local OS Credential Manager and unlock your vault.
+            </p>
+
+            <form onSubmit={handleRestoreWithKey}>
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '6px', color: '#333' }}>
+                  Emergency Recovery Key
+                </label>
+                <textarea
+                  required
+                  rows="3"
+                  style={{
+                    width: '100%',
+                    padding: '10px',
+                    borderRadius: '6px',
+                    border: '1px solid #ccc',
+                    fontFamily: 'monospace',
+                    fontSize: '0.88rem',
+                    boxSizing: 'border-box',
+                    resize: 'vertical'
+                  }}
+                  placeholder="Paste PV-XXXX-... or 64-character hex key"
+                  value={recoveryInput}
+                  onChange={e => setRecoveryInput(e.target.value)}
+                  autoFocus
+                />
+              </div>
+
+              {recoveryError && (
+                <div style={{
+                  color: '#dc2626',
+                  background: '#fef2f2',
+                  padding: '8px 12px',
+                  borderRadius: '6px',
+                  fontSize: '0.85rem',
+                  marginBottom: '16px'
+                }}>
+                  {recoveryError}
+                </div>
+              )}
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                <button
+                  type="button"
+                  style={{
+                    background: 'transparent',
+                    border: '1px solid #ccc',
+                    borderRadius: '6px',
+                    padding: '8px 16px',
+                    cursor: 'pointer'
+                  }}
+                  onClick={() => setShowRecoveryModal(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="login-button"
+                  style={{ width: 'auto', padding: '8px 20px' }}
+                  disabled={isRestoringKey}
+                >
+                  {isRestoringKey ? "Verifying..." : "Restore Key & Login"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
