@@ -1,0 +1,141 @@
+{
+  "appTitle": "PassVault",
+  "searchPlaceholder": "Rechercher des identifiants (ex. Google, GitHub, admin)...",
+  "noCredentials": "Aucun identifiant enregistré pour le moment.",
+  "noSearchResults": "Aucun identifiant correspondant trouvé.",
+  "totalCredentials": "Total des identifiants",
+  
+  "actions": {
+    "autoType": "Saisie auto",
+    "autoTypeTooltip": "⚡ Saisie auto : Remplir les identifiants dans la fenêtre cible",
+    "copyBoth": "Copier les deux",
+    "copyBothTooltip": "📋➔🔑 Copie séquentielle : Identifiant maintenant, Mot de passe dans 5s",
+    "copyUsername": "Identifiant",
+    "copyUsernameTooltip": "👤 Copier l'identifiant",
+    "copyPassword": "Mot de passe",
+    "copyPasswordTooltip": "🔑 Copier le mot de passe (effacé dans 15s)",
+    "share": "Partager",
+    "shareTooltip": "📡 Partager l'identifiant sur le réseau local (LAN)",
+    "edit": "Modifier",
+    "delete": "Supprimer",
+    "moveUp": "Monter",
+    "moveDown": "Descendre",
+    "addCredential": "+ Ajouter un identifiant",
+    "backup": "⬇️ Sauvegarde",
+    "restore": "⬆️ Restaurer",
+    "recoveryKey": "🔑 Clé de secours",
+    "about": "ℹ️ À propos",
+    "cancel": "Annuler",
+    "save": "Enregistrer l'identifiant",
+    "close": "Fermer"
+  },
+  
+  "status": {
+    "copied": "Copié !",
+    "userCopied": "Identifiant copié !",
+    "passReady": "Mot de passe prêt !",
+    "usernameCopied": "Identifiant copié dans le presse-papier",
+    "passwordCopied": "Mot de passe copié dans le presse-papier (effacé dans 15s)",
+    "urlCopied": "URL du site copiée dans le presse-papier",
+    "failedCopy": "Échec de la copie",
+    "autoTyping": "⚡ Saisie automatique des identifiants en cours...",
+    "credentialDeleted": "Identifiant supprimé",
+    "credentialSaved": "Identifiant enregistré avec succès",
+    "orderUpdated": "Ordre des identifiants mis à jour",
+    "backupDownloaded": "Sauvegarde chiffrée téléchargée",
+    "restoreSuccess": "Coffre-fort et clé restaurés avec succès dans le gestionnaire d'identifiants de l'OS !",
+    "decryptionError": "Impossible de déchiffrer le coffre-fort avec la clé stockée. Entrez votre clé de secours ou phrase secrète pour le déverrouiller."
+  },
+
+  "login": {
+    "welcome": "Bienvenue",
+    "subtitle": "Accès sécurisé à votre coffre-fort",
+    "loginButton": "Connexion avec les identifiants OS",
+    "verifying": "Vérification en cours...",
+    "biometryHint": "Remarque : L'authentification biométrique n'est peut-être pas configurée sur votre système.",
+    "restoreLink": "🔑 Restaurer le coffre-fort avec une clé de secours / phrase secrète",
+    "modalTitle": "🔑 Restaurer avec clé de secours / phrase secrète",
+    "modalDescription": "Changement de PC ou réinstallation de l'OS ? Entrez votre clé de secours d'urgence (TV-XXXX...) ou votre phrase secrète multilingue pour l'enregistrer dans votre gestionnaire d'identifiants local et déverrouiller votre coffre-fort.",
+    "inputLabel": "Clé de secours d'urgence ou phrase secrète",
+    "inputPlaceholder": "Collez TV-XXXX-..., clé 64-hex ou phrase secrète dans n'importe quelle langue (Français, English, தமிழ், ಕನ್ನಡ, മലയാളം, हिन्दी, Español)",
+    "restoreAndLogin": "Restaurer la clé et se connecter",
+    "invalidKey": "Format de clé de secours ou de phrase secrète invalide."
+  },
+
+  "credForm": {
+    "addTitle": "Ajouter un identifiant",
+    "editTitle": "Modifier l'identifiant",
+    "titleLabel": "Titre / Nom du compte",
+    "titlePlaceholder": "ex. Email Pro, AWS Personnel",
+    "urlLabel": "Site web / URL",
+    "urlPlaceholder": "https://exemple.fr",
+    "usernameLabel": "Identifiant / Email",
+    "usernamePlaceholder": "utilisateur@exemple.fr",
+    "passwordLabel": "Mot de passe",
+    "passwordPlaceholder": "Entrez le mot de passe",
+    "generatePassword": "🎲 Générer un mot de passe fort",
+    "connectionTypeLabel": "Type d'application / Cible",
+    "connectionWeb": "🌐 Navigateur Web (Touche Tab entre identifiant et mot de passe)",
+    "connectionPutty": "💻 PuTTY / SSH (Touche Entrée entre identifiant et mot de passe)",
+    "connectionPam": "🛡️ Portail Arcon PAM / Entreprise (Frappes cadencées)",
+    "connectionPowershell": "⚡ PowerShell / CLI (Terminal de ligne de commande)",
+    "installPathLabel": "Chemin de l'application / Commande (Optionnel)",
+    "installPathPlaceholder": "ex. C:\\Program Files\\PuTTY\\putty.exe",
+    "remarksLabel": "Remarques / Notes",
+    "remarksPlaceholder": "Notes facultatives, questions de sécurité ou détails du serveur",
+    "cancel": "Annuler",
+    "save": "Enregistrer l'identifiant"
+  },
+
+  "recoveryModal": {
+    "title": "Clé de secours d'urgence",
+    "description": "Votre clé maîtresse de coffre-fort 256 bits. Conservez cette clé dans un endroit hors ligne sécurisé (coffre, sauvegarde papier ou gestionnaire de mots de passe). Vous pouvez également utiliser une phrase secrète mémorisable dans l'une des langues prises en charge (Français, English, தமிழ், ಕನ್ನಡ, മലയാളം, हिन्दी, Español).",
+    "keyLabel": "Clé de secours",
+    "copy": "📋 Copier la clé",
+    "copied": "✓ Copié dans le presse-papier !",
+    "close": "Fermer"
+  },
+
+  "unlockModal": {
+    "title": "🔑 Déverrouiller le coffre-fort",
+    "description": "Le gestionnaire d'identifiants de l'OS local doit être mis à jour avec votre clé de secours ou phrase secrète pour déchiffrer vos identifiants.",
+    "inputLabel": "Clé de secours ou phrase secrète",
+    "inputPlaceholder": "Collez TV-XXXX-... ou entrez votre phrase secrète multilingue",
+    "unlockButton": "Déverrouiller et enregistrer dans l'OS",
+    "cancel": "Annuler"
+  },
+
+  "restoreModal": {
+    "title": "⬆️ Restaurer une sauvegarde",
+    "description": "Sélectionnez un fichier de sauvegarde chiffré (.json) pour restaurer vos identifiants.",
+    "selectFile": "Choisir le fichier de sauvegarde",
+    "keyLabel": "Entrez la clé de secours ou phrase secrète pour cette sauvegarde",
+    "keyPlaceholder": "Collez TV-XXXX-... ou phrase secrète",
+    "confirmRestore": "Restaurer et déchiffrer",
+    "cancel": "Annuler"
+  },
+
+  "shareModal": {
+    "title": "📡 Partage LAN Post-Quantique",
+    "searching": "Découverte des appareils sur le réseau local...",
+    "noPeers": "Aucun autre appareil PassVault détecté à proximité sur votre Wi-Fi/LAN.",
+    "selectDevice": "Sélectionnez l'appareil cible pour envoyer l'identifiant :",
+    "send": "Envoyer l'identifiant",
+    "incomingTitle": "Identifiant entrant",
+    "incomingPrompt": "souhaite partager un identifiant avec vous :",
+    "accept": "Accepter et ajouter",
+    "reject": "Refuser"
+  },
+
+  "language": {
+    "select": "Langue",
+    "en": "English",
+    "ta": "தமிழ்",
+    "kn": "ಕನ್ನಡ",
+    "ml": "മലയാളം",
+    "hi": "हिन्दी",
+    "fr": "Français",
+    "es": "Español"
+  }
+}
+

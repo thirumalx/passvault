@@ -1,10 +1,10 @@
 import { useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
 import Login from "./components/Login";
 import PassVault from "./components/PassVault";
+import { I18nProvider } from "./i18n";
 import "./App.css";
 
-function App() {
+function AppContent() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   if (!isAuthenticated) {
@@ -12,6 +12,14 @@ function App() {
   }
 
   return <PassVault />;
+}
+
+function App() {
+  return (
+    <I18nProvider>
+      <AppContent />
+    </I18nProvider>
+  );
 }
 
 export default App;

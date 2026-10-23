@@ -1,0 +1,141 @@
+{
+  "appTitle": "PassVault",
+  "searchPlaceholder": "Buscar credenciales (ej. Google, GitHub, admin)...",
+  "noCredentials": "Aún no hay credenciales guardadas.",
+  "noSearchResults": "No se encontraron credenciales coincidentes.",
+  "totalCredentials": "Total de credenciales",
+  
+  "actions": {
+    "autoType": "Escritura auto",
+    "autoTypeTooltip": "⚡ Escritura auto: Rellenar credenciales en la ventana de destino",
+    "copyBoth": "Copiar ambos",
+    "copyBothTooltip": "📋➔🔑 Copia secuencial: Usuario ahora, Contraseña en 5s",
+    "copyUsername": "Usuario",
+    "copyUsernameTooltip": "👤 Copiar nombre de usuario",
+    "copyPassword": "Contraseña",
+    "copyPasswordTooltip": "🔑 Copiar contraseña (se borra en 15s)",
+    "share": "Compartir",
+    "shareTooltip": "📡 Compartir credencial a través de LAN",
+    "edit": "Editar",
+    "delete": "Eliminar",
+    "moveUp": "Subir",
+    "moveDown": "Bajar",
+    "addCredential": "+ Añadir credencial",
+    "backup": "⬇️ Copia de seguridad",
+    "restore": "⬆️ Restaurar",
+    "recoveryKey": "🔑 Clave de recuperación",
+    "about": "ℹ️ Acerca de",
+    "cancel": "Cancelar",
+    "save": "Guardar credencial",
+    "close": "Cerrar"
+  },
+  
+  "status": {
+    "copied": "¡Copiado!",
+    "userCopied": "¡Usuario copiado!",
+    "passReady": "¡Contraseña lista!",
+    "usernameCopied": "Usuario copiado al portapapeles",
+    "passwordCopied": "Contraseña copiada al portapapeles (se borra en 15s)",
+    "urlCopied": "URL del sitio web copiada al portapapeles",
+    "failedCopy": "Error al copiar",
+    "autoTyping": "⚡ Escribiendo credenciales automáticamente...",
+    "credentialDeleted": "Credencial eliminada",
+    "credentialSaved": "Credencial guardada con éxito",
+    "orderUpdated": "Orden de credenciales actualizado",
+    "backupDownloaded": "Copia de seguridad cifrada descargada",
+    "restoreSuccess": "¡Bóveda y clave restauradas con éxito en el Administrador de Credenciales del SO!",
+    "decryptionError": "No se puede descifrar la bóveda con la clave guardada. Ingrese su clave de recuperación o frase secreta para desbloquearla."
+  },
+
+  "login": {
+    "welcome": "Bienvenido",
+    "subtitle": "Acceso seguro a su bóveda",
+    "loginButton": "Iniciar sesión con credenciales del SO",
+    "verifying": "Verificando...",
+    "biometryHint": "Nota: Es posible que la autenticación biométrica no esté configurada en su sistema.",
+    "restoreLink": "🔑 Restaurar bóveda con clave de recuperación / frase secreta",
+    "modalTitle": "🔑 Restaurar con clave de recuperación / frase secreta",
+    "modalDescription": "¿Cambió a una nueva PC o reinstaló el SO? Ingrese su clave de recuperación de emergencia (TV-XXXX...) o su frase secreta multilingüe para guardarla en su Administrador de Credenciales local y desbloquear su bóveda.",
+    "inputLabel": "Clave de recuperación de emergencia o frase secreta",
+    "inputPlaceholder": "Pegue TV-XXXX-..., clave 64-hex o frase secreta en cualquier idioma (Español, English, தமிழ், ಕನ್ನಡ, മലയാളം, हिन्दी, Français)",
+    "restoreAndLogin": "Restaurar clave e iniciar sesión",
+    "invalidKey": "Formato de clave de recuperación o frase secreta no válido."
+  },
+
+  "credForm": {
+    "addTitle": "Añadir nueva credencial",
+    "editTitle": "Editar credencial",
+    "titleLabel": "Título / Nombre de la cuenta",
+    "titlePlaceholder": "ej. Correo del trabajo, AWS Personal",
+    "urlLabel": "Sitio web / URL",
+    "urlPlaceholder": "https://ejemplo.com",
+    "usernameLabel": "Usuario / Correo",
+    "usernamePlaceholder": "usuario@ejemplo.com",
+    "passwordLabel": "Contraseña",
+    "passwordPlaceholder": "Ingrese la contraseña",
+    "generatePassword": "🎲 Generar contraseña segura",
+    "connectionTypeLabel": "Tipo de aplicación / Destino",
+    "connectionWeb": "🌐 Navegador web (Tabulación entre usuario y contraseña)",
+    "connectionPutty": "💻 PuTTY / SSH (Enter entre usuario y contraseña)",
+    "connectionPam": "🛡️ Arcon PAM / Portal empresarial (Pulsaciones pausadas)",
+    "connectionPowershell": "⚡ PowerShell / CLI (Terminal de comandos)",
+    "installPathLabel": "Ruta de la app / Comando (Opcional)",
+    "installPathPlaceholder": "ej. C:\\Program Files\\PuTTY\\putty.exe",
+    "remarksLabel": "Notas / Observaciones",
+    "remarksPlaceholder": "Notas opcionales, preguntas de seguridad o datos del servidor",
+    "cancel": "Cancelar",
+    "save": "Guardar credencial"
+  },
+
+  "recoveryModal": {
+    "title": "Clave de recuperación de emergencia",
+    "description": "Su clave maestra de bóveda de 256 bits. Guarde esta clave en una ubicación segura fuera de línea (caja fuerte, copia impresa o gestor de contraseñas). También puede usar una frase secreta fácil de recordar en cualquiera de los idiomas admitidos (Español, English, தமிழ், ಕನ್ನಡ, മലയാളം, हिन्दी, Français).",
+    "keyLabel": "Clave de recuperación ante desastres",
+    "copy": "📋 Copiar clave",
+    "copied": "✓ ¡Copiado al portapapeles!",
+    "close": "Cerrar"
+  },
+
+  "unlockModal": {
+    "title": "🔑 Desbloquear bóveda",
+    "description": "El Administrador de Credenciales del SO local debe actualizarse con su clave de recuperación o frase secreta para descifrar sus credenciales.",
+    "inputLabel": "Clave de recuperación o frase secreta",
+    "inputPlaceholder": "Pegue TV-XXXX-... o ingrese su frase secreta multilingüe",
+    "unlockButton": "Desbloquear y guardar en el SO",
+    "cancel": "Cancelar"
+  },
+
+  "restoreModal": {
+    "title": "⬆️ Restaurar copia de seguridad",
+    "description": "Seleccione un archivo de copia de seguridad cifrado (.json) para restaurar sus credenciales.",
+    "selectFile": "Elegir archivo de copia",
+    "keyLabel": "Ingrese la clave de recuperación o frase secreta para esta copia",
+    "keyPlaceholder": "Pegue TV-XXXX-... o frase secreta",
+    "confirmRestore": "Restaurar y descifrar",
+    "cancel": "Cancelar"
+  },
+
+  "shareModal": {
+    "title": "📡 Compartir en LAN Post-Cuántica",
+    "searching": "Buscando dispositivos en la red local...",
+    "noPeers": "No se encontraron otros dispositivos PassVault cercanos en su Wi-Fi/LAN.",
+    "selectDevice": "Seleccione el dispositivo de destino para enviar la credencial:",
+    "send": "Enviar credencial",
+    "incomingTitle": "Credencial entrante",
+    "incomingPrompt": "desea compartir una credencial con usted:",
+    "accept": "Aceptar y añadir",
+    "reject": "Rechazar"
+  },
+
+  "language": {
+    "select": "Idioma",
+    "en": "English",
+    "ta": "தமிழ்",
+    "kn": "ಕನ್ನಡ",
+    "ml": "മലയാളം",
+    "hi": "हिन्दी",
+    "fr": "Français",
+    "es": "Español"
+  }
+}
+

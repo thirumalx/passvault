@@ -1,0 +1,141 @@
+{
+  "appTitle": "PassVault",
+  "searchPlaceholder": "Search credentials (e.g. Google, GitHub, admin)...",
+  "noCredentials": "No credentials stored yet.",
+  "noSearchResults": "No matching credentials found.",
+  "totalCredentials": "Total Credentials",
+  
+  "actions": {
+    "autoType": "Auto-Type",
+    "autoTypeTooltip": "⚡ Auto-Type: Fill credentials into target window",
+    "copyBoth": "Copy Both",
+    "copyBothTooltip": "📋➔🔑 Sequential Copy: Username now, Password in 5s",
+    "copyUsername": "Username",
+    "copyUsernameTooltip": "👤 Copy Username",
+    "copyPassword": "Password",
+    "copyPasswordTooltip": "🔑 Copy Password (clears in 15s)",
+    "share": "Share",
+    "shareTooltip": "📡 Share Credential over LAN",
+    "edit": "Edit",
+    "delete": "Delete",
+    "moveUp": "Move Up",
+    "moveDown": "Move Down",
+    "addCredential": "+ Add Credential",
+    "backup": "⬇️ Backup",
+    "restore": "⬆️ Restore",
+    "recoveryKey": "🔑 Recovery Key",
+    "about": "ℹ️ About",
+    "cancel": "Cancel",
+    "save": "Save Credential",
+    "close": "Close"
+  },
+  
+  "status": {
+    "copied": "Copied!",
+    "userCopied": "User Copied!",
+    "passReady": "Pass Ready!",
+    "usernameCopied": "Username copied to clipboard",
+    "passwordCopied": "Password copied to clipboard (auto-clears in 15s)",
+    "urlCopied": "Website URL copied to clipboard",
+    "failedCopy": "Failed to copy",
+    "autoTyping": "⚡ Auto-typing credential...",
+    "credentialDeleted": "Credential deleted",
+    "credentialSaved": "Credential saved successfully",
+    "orderUpdated": "Credential order updated",
+    "backupDownloaded": "Encrypted backup downloaded",
+    "restoreSuccess": "Vault and key restored successfully into OS Credential Manager!",
+    "decryptionError": "Unable to decrypt vault with stored OS key. Enter your Recovery Key or Passphrase to unlock it."
+  },
+
+  "login": {
+    "welcome": "Welcome Back",
+    "subtitle": "Secure access to your vault",
+    "loginButton": "Login with OS Credentials",
+    "verifying": "Verifying...",
+    "biometryHint": "Note: Biometric authentication may not be configured on your system.",
+    "restoreLink": "🔑 Restore Vault with Recovery Key / Passphrase",
+    "modalTitle": "🔑 Restore with Recovery Key / Passphrase",
+    "modalDescription": "Moving to a new PC or recovered from an OS reinstall? Enter your Emergency Recovery Key (TV-XXXX...) or your Multilingual Passphrase to save it into your local OS Credential Manager and unlock your vault.",
+    "inputLabel": "Emergency Recovery Key or Passphrase",
+    "inputPlaceholder": "Paste TV-XXXX-..., 64-hex key, or passphrase in any language (English, தமிழ், ಕನ್ನಡ, മലയാളം, हिन्दी, Français, Español)",
+    "restoreAndLogin": "Restore Key & Login",
+    "invalidKey": "Invalid recovery key or passphrase format."
+  },
+
+  "credForm": {
+    "addTitle": "Add New Credential",
+    "editTitle": "Edit Credential",
+    "titleLabel": "Title / Account Name",
+    "titlePlaceholder": "e.g. Work Email, Personal AWS",
+    "urlLabel": "Website / URL",
+    "urlPlaceholder": "https://example.com",
+    "usernameLabel": "Username / Email",
+    "usernamePlaceholder": "user@example.com",
+    "passwordLabel": "Password",
+    "passwordPlaceholder": "Enter password",
+    "generatePassword": "🎲 Generate Strong Password",
+    "connectionTypeLabel": "Application / Target Type",
+    "connectionWeb": "🌐 Web Browser (Tab between User & Pass)",
+    "connectionPutty": "💻 PuTTY / SSH (Enter between User & Pass)",
+    "connectionPam": "🛡️ Arcon PAM / Enterprise Portal (Paced keystrokes)",
+    "connectionPowershell": "⚡ PowerShell / CLI (Command Line Terminal)",
+    "installPathLabel": "App Path / Command (Optional)",
+    "installPathPlaceholder": "e.g. C:\\Program Files\\PuTTY\\putty.exe",
+    "remarksLabel": "Remarks / Notes",
+    "remarksPlaceholder": "Optional notes, recovery questions, or server info",
+    "cancel": "Cancel",
+    "save": "Save Credential"
+  },
+
+  "recoveryModal": {
+    "title": "Emergency Recovery Key",
+    "description": "Your 256-bit vault master key. Store this key in a secure offline location (safe, paper backup, or password manager). You can also use a memorable passphrase in any supported language (English, Tamil, Kannada, Malayalam, Hindi, French, Spanish).",
+    "keyLabel": "Disaster Recovery Key",
+    "copy": "📋 Copy Key",
+    "copied": "✓ Copied to Clipboard!",
+    "close": "Close"
+  },
+
+  "unlockModal": {
+    "title": "🔑 Unlock Vault",
+    "description": "The local OS Credential Manager needs to be updated with your recovery key or passphrase to decrypt your credentials.",
+    "inputLabel": "Recovery Key or Passphrase",
+    "inputPlaceholder": "Paste TV-XXXX-... or enter your multilingual passphrase",
+    "unlockButton": "Unlock & Save to OS",
+    "cancel": "Cancel"
+  },
+
+  "restoreModal": {
+    "title": "⬆️ Restore Vault Backup",
+    "description": "Select an encrypted vault backup file (.json) to restore your credentials.",
+    "selectFile": "Choose Backup File",
+    "keyLabel": "Enter Recovery Key or Passphrase for this Backup",
+    "keyPlaceholder": "Paste TV-XXXX-... or passphrase",
+    "confirmRestore": "Restore & Decrypt Vault",
+    "cancel": "Cancel"
+  },
+
+  "shareModal": {
+    "title": "📡 Post-Quantum LAN Share",
+    "searching": "Discovering devices on local network...",
+    "noPeers": "No other PassVault devices found nearby on your Wi-Fi/LAN.",
+    "selectDevice": "Select target device to send credential:",
+    "send": "Send Credential",
+    "incomingTitle": "Incoming Credential",
+    "incomingPrompt": "wants to share a credential with you:",
+    "accept": "Accept & Add",
+    "reject": "Decline"
+  },
+
+  "language": {
+    "select": "Language",
+    "en": "English",
+    "ta": "தமிழ்",
+    "kn": "ಕನ್ನಡ",
+    "ml": "മലയാളം",
+    "hi": "हिन्दी",
+    "fr": "Français",
+    "es": "Español"
+  }
+}
+

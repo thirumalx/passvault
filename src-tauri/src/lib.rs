@@ -26,6 +26,7 @@ pub fn run() {
             keystore::generate_vault_key,
             keystore::format_recovery_key,
             keystore::normalize_recovery_key,
+            keystore::derive_passphrase_key,
             autotype::auto_type
         ])
         .run(tauri::generate_context!())

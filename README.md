@@ -8,7 +8,7 @@ Built with **Tauri + React**, the application provides a simple interface where 
 
 * 🔐 **Hardware & OS-Native Protection**: Sealed inside OS credential managers (Windows Credential Manager, Apple Keychain, Linux Secret Service)
 * 🛡️ **Zero Plaintext Keys on Disk**: Encryption keys are never stored in plaintext inside `vault.json` or source files
-* 🔑 **Emergency Disaster Recovery Key**: Human-readable recovery code (`PV-XXXX-...`) prevents data loss during OS reinstall or hardware failure
+* 🔑 **Emergency Disaster Recovery Key**: Human-readable recovery code (`TV-XXXX-...`) prevents data loss during OS reinstall or hardware failure
 * 💾 **Safe Encrypted Backups**: Backups contain only encrypted ciphertext and never leak the vault key
 * 👁️ **Screen Privacy**: Passwords are never displayed in the UI
 * 📋 **One-Click Copy**: Instant clipboard copying with automatic timeout clearing (15s)
@@ -190,7 +190,7 @@ git push origin main
 git tag v0.2.1 
 git push origin "v1.0.0"
 
-git add . && git commit -m "Bump version to 0.2.3" && git push origin main && git tag v0.2.3 && git push origin v0.2.3
+git add . && git commit -m "Bump version to 0.2.4" && git push origin main && git tag v0.2.4 && git push origin v0.2.4
 ```
 
 Once you run `git push origin "v1.0.0"`, GitHub's automated servers will immediately spin up a Mac, an Ubuntu, and a Windows machine in the cloud. They will build the app and automatically create a Release on your GitHub page containing the `.dmg`, `.deb`, `.AppImage`, and `.msi` installers!

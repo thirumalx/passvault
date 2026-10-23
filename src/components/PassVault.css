@@ -18,7 +18,7 @@
 }
 
 .vault-header {
-  padding: 10px 20px;
+  padding: 6px 20px;
   background: white;
   border-bottom: 1px solid #eaeaea;
   display: flex;
@@ -43,7 +43,7 @@
 }
 
 .search-container {
-  padding: 10px 30px;
+  padding: 10px 200px;
 }
 
 .search-input {
@@ -67,10 +67,10 @@
 .vault-list {
   flex: 1;
   overflow-y: auto;
-  padding: 0 30px 30px;
+  padding: 0 20px 0px;
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 3px;
 }
 
 .credential-card {
@@ -213,7 +213,7 @@
   border: 1px solid #0f62fe;
   border-radius: 6px;
   padding: 6px 12px;
-  font-size: 0.9rem;
+  font-size: 0.7rem;
   cursor: pointer;
 }
 
@@ -481,8 +481,8 @@
   gap: 4px !important;
 }
 
-/* Also trigger automatically whenever window width is <= 1050px */
-@media (max-width: 1050px) {
+/* Also trigger automatically whenever window width is <= 1300px */
+@media (max-width: 1300px) {
   .credential-actions .btn-label {
     display: none !important;
   }
@@ -492,10 +492,10 @@
     padding: 7px 10px !important;
     font-size: 0.95rem !important;
     gap: 0 !important;
-    min-width: 36px !important;
+    min-width: 38px !important;
     justify-content: center !important;
   }
   .credential-actions {
-    gap: 4px !important;
+    gap: 6px !important;
   }
 }
