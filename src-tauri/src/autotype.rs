@@ -1,6 +1,10 @@
+#[cfg(not(target_os = "android"))]
 use enigo::{Direction, Enigo, Key, Keyboard, Settings};
+#[cfg(not(target_os = "android"))]
 use std::thread::sleep;
+#[cfg(not(target_os = "android"))]
 use std::time::Duration;
+#[cfg(not(target_os = "android"))]
 use tauri::{AppHandle, Manager};
 
 /// Auto-types credentials into the previously active window.
@@ -14,6 +18,7 @@ use tauri::{AppHandle, Manager};
 ///    - For other types ('web', 'pam', etc.): sends Tab + waits 150ms.
 /// 5. Types the password (if provided) with optional per-keystroke pacing for remote sessions (e.g., Arcon PAM RDP).
 /// 6. Optionally sends Enter after password for terminal logins.
+#[cfg(not(target_os = "android"))]
 #[tauri::command]
 pub async fn auto_type(
     app: AppHandle,
@@ -96,3 +101,15 @@ pub async fn auto_type(
     Ok(())
 }
 
+#[cfg(target_os = "android")]
+#[tauri::command]
+pub async fn auto_type(
+    _app: tauri::AppHandle,
+    _username: Option<String>,
+    _password: Option<String>,
+    _connection_type: Option<String>,
+    _inter_key_delay_ms: Option<u64>,
+) -> Result<(), String> {
+    // On Android, typing is performed wirelessly via Bluetooth HID
+    Ok(())
+}

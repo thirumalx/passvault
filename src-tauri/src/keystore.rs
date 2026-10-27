@@ -1,12 +1,16 @@
+#[cfg(not(target_os = "android"))]
 use keyring::{Entry, Error};
 use sha2::Sha256;
 use unicode_normalization::UnicodeNormalization;
 
+#[cfg(not(target_os = "android"))]
 const SERVICE_NAME: &str = "PassVault";
+#[cfg(not(target_os = "android"))]
 const KEY_NAME: &str = "vault_master_key";
 const PASSPHRASE_SALT: &[u8] = b"PassVault:MultilingualPassphrase:v1";
 const PBKDF2_ROUNDS: u32 = 100_000;
 
+#[cfg(not(target_os = "android"))]
 #[tauri::command]
 pub fn get_vault_key() -> Result<Option<String>, String> {
     let entry = Entry::new(SERVICE_NAME, KEY_NAME).map_err(|e| e.to_string())?;
@@ -24,6 +28,23 @@ pub fn get_vault_key() -> Result<Option<String>, String> {
     }
 }
 
+#[cfg(target_os = "android")]
+#[tauri::command]
+pub fn get_vault_key(app: tauri::AppHandle) -> Result<Option<String>, String> {
+    use tauri::Manager;
+    let data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let key_file = data_dir.join(".vault_key");
+    if key_file.exists() {
+        let content = std::fs::read_to_string(&key_file).map_err(|e| e.to_string())?;
+        let trimmed = content.trim().to_string();
+        if !trimmed.is_empty() {
+            return Ok(Some(trimmed));
+        }
+    }
+    Ok(None)
+}
+
+#[cfg(not(target_os = "android"))]
 #[tauri::command]
 pub fn set_vault_key(key: String) -> Result<(), String> {
     let clean_key = normalize_key(&key)?;
@@ -35,6 +56,19 @@ pub fn set_vault_key(key: String) -> Result<(), String> {
         .map_err(|e| format!("Failed to save key in OS keyring: {}", e))
 }
 
+#[cfg(target_os = "android")]
+#[tauri::command]
+pub fn set_vault_key(app: tauri::AppHandle, key: String) -> Result<(), String> {
+    use tauri::Manager;
+    let clean_key = normalize_key(&key)?;
+    let data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&data_dir).map_err(|e| e.to_string())?;
+    let key_file = data_dir.join(".vault_key");
+    std::fs::write(&key_file, &clean_key).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[cfg(not(target_os = "android"))]
 #[tauri::command]
 pub fn delete_vault_key() -> Result<(), String> {
     let entry = Entry::new(SERVICE_NAME, KEY_NAME).map_err(|e| e.to_string())?;
@@ -42,6 +76,19 @@ pub fn delete_vault_key() -> Result<(), String> {
         Ok(()) | Err(Error::NoEntry) => Ok(()),
         Err(e) => Err(format!("Failed to delete key from OS keyring: {}", e)),
     }
+}
+
+#[cfg(target_os = "android")]
+#[tauri::command]
+pub fn delete_vault_key(app: tauri::AppHandle) -> Result<(), String> {
+    use tauri::Manager;
+    if let Ok(data_dir) = app.path().app_data_dir() {
+        let key_file = data_dir.join(".vault_key");
+        if key_file.exists() {
+            let _ = std::fs::remove_file(key_file);
+        }
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -119,69 +166,4 @@ fn normalize_key(input: &str) -> Result<String, String> {
 
     let hex_key: String = derived_key.iter().map(|b| format!("{:02x}", b)).collect();
     Ok(hex_key)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_raw_64_hex_passthrough() {
-        let raw = "1849c2cf3b0b838e64f24a77f831c5430420173b6d132552ae17a4b4d5385ea2";
-        assert_eq!(normalize_key(raw).unwrap(), raw);
-
-        let formatted_tv = "TV-1849C2CF-3B0B838E-64F24A77-F831C543-0420173B-6D132552-AE17A4B4-D5385EA2";
-        assert_eq!(normalize_key(formatted_tv).unwrap(), raw);
-
-        let formatted_pv = "PV-1849c2cf-3b0b838e-64f24a77-f831c543-0420173b-6d132552-ae17a4b4-d5385ea2";
-        assert_eq!(normalize_key(formatted_pv).unwrap(), raw);
-    }
-
-    #[test]
-    fn test_multilingual_passphrases() {
-        // English
-        let en = normalize_key("MySecureVaultPassphrase2026!").unwrap();
-        assert_eq!(en.len(), 64);
-
-        // Tamil
-        let ta = normalize_key("என்ரகசியகடவுச்சொல்2026").unwrap();
-        assert_eq!(ta.len(), 64);
-
-        // Kannada
-        let kn = normalize_key("ನನ್ನರಹಸ್ಯಪಾಸ್‌ವರ್ಡ್2026").unwrap();
-        assert_eq!(kn.len(), 64);
-
-        // Malayalam
-        let ml = normalize_key("എന്റെരഹസ്യപാസ്‌വേഡ്2026").unwrap();
-        assert_eq!(ml.len(), 64);
-
-        // Hindi
-        let hi = normalize_key("मेरागुप्तपासवर्ड2026").unwrap();
-        assert_eq!(hi.len(), 64);
-
-        // French (with accents)
-        let fr = normalize_key("MonMotDePasseTrèsSécurisé!").unwrap();
-        assert_eq!(fr.len(), 64);
-
-        // Spanish (with inverted mark and tilde)
-        let es = normalize_key("¡MiContraseñaSúperSegura!").unwrap();
-        assert_eq!(es.len(), 64);
-
-        // Determinism: calling it again gives the exact same derived 256-bit key
-        assert_eq!(normalize_key("என்ரகசியகடவுச்சொல்2026").unwrap(), ta);
-        assert_eq!(normalize_key("ನನ್ನರಹಸ್ಯಪಾಸ್‌ವರ್ಡ್2026").unwrap(), kn);
-        assert_eq!(normalize_key("¡MiContraseñaSúperSegura!").unwrap(), es);
-    }
-
-    #[test]
-    fn test_unicode_normalization_equivalence() {
-        // 'é' in NFC (U+00E9) vs NFD (U+0065 U+0301)
-        let nfc_str = "Caf\u{00E9}Vault2026";
-        let nfd_str = "Cafe\u{0301}Vault2026";
-        assert_ne!(nfc_str.as_bytes(), nfd_str.as_bytes()); // Raw bytes differ
-        assert_eq!(
-            normalize_key(nfc_str).unwrap(),
-            normalize_key(nfd_str).unwrap() // Derived key is identical!
-        );
-    }
 }

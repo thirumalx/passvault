@@ -1,11 +1,24 @@
 mod share;
 mod keystore;
 mod autotype;
+mod bluetooth;
 use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let bluetooth_hid_plugin = tauri::plugin::Builder::<tauri::Wry>::new("bluetoothHid")
+        .setup(|_app, _api| {
+            #[cfg(target_os = "android")]
+            {
+                let handle = _api.register_android_plugin("io.github.thirumalx", "BluetoothHidPlugin")?;
+                _app.manage(bluetooth::BluetoothHidHandle(handle));
+            }
+            Ok(())
+        })
+        .build();
+
     tauri::Builder::default()
+        .plugin(bluetooth_hid_plugin)
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_biometry::init())
@@ -27,7 +40,10 @@ pub fn run() {
             keystore::format_recovery_key,
             keystore::normalize_recovery_key,
             keystore::derive_passphrase_key,
-            autotype::auto_type
+            autotype::auto_type,
+            bluetooth::bluetooth_get_status,
+            bluetooth::bluetooth_request_permissions,
+            bluetooth::bluetooth_type_credentials
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

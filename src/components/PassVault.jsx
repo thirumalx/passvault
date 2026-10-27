@@ -102,9 +102,60 @@ export default function PassVault() {
 
     const [peers, setPeers] = useState([]);
     const [credToShare, setCredToShare] = useState(null);
+    const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+    const [bluetoothStatus, setBluetoothStatus] = useState({
+        connected: false,
+        deviceName: "",
+        deviceAddress: "",
+        registered: false,
+        isAvailable: false
+    });
 
     useEffect(() => {
         initVault();
+
+        // Check if running on Android with Bluetooth HID support
+        let unlistenBt = null;
+        let btInterval = null;
+
+        const updateBtStatus = async () => {
+            try {
+                const status = await invoke("bluetooth_get_status");
+                if (status) {
+                    setBluetoothStatus(prev => ({
+                        ...prev,
+                        ...status,
+                        isAvailable: status.isAvailable ?? true
+                    }));
+                }
+            } catch (e) {
+                console.warn("Failed to get Bluetooth status:", e);
+            }
+        };
+
+        const setupBt = async () => {
+            await updateBtStatus();
+            try {
+                unlistenBt = await listen("bluetoothStatusChange", (event) => {
+                    if (event.payload) {
+                        setBluetoothStatus(prev => ({
+                            ...prev,
+                            ...event.payload,
+                            isAvailable: true
+                        }));
+                    }
+                });
+            } catch (_) {}
+        };
+        setupBt();
+
+        // Poll Bluetooth status every 3s so the UI reflects pairing immediately
+        btInterval = setInterval(updateBtStatus, 3000);
+
+        return () => {
+            if (unlistenBt) unlistenBt();
+            if (btInterval) clearInterval(btInterval);
+        };
     }, []);
 
     useEffect(() => {
@@ -147,11 +198,25 @@ export default function PassVault() {
 
     const initVault = async (forcedKey = null) => {
         try {
-            const dir = await appDataDir();
-            const storeInstance = await load(`${dir}\\vault.json`, { autoSave: false });
-            setStore(storeInstance);
+            let storeInstance = null;
+            try {
+                // Platform-agnostic relative filename - handled natively by Tauri plugin-store
+                storeInstance = await load("vault.json", { autoSave: false });
+            } catch (errRel) {
+                console.warn("Relative load('vault.json') failed, trying appDataDir path:", errRel);
+                try {
+                    const dir = await appDataDir();
+                    const sep = dir.includes('/') ? '/' : '\\';
+                    storeInstance = await load(`${dir}${sep}vault.json`, { autoSave: false });
+                } catch (errAbs) {
+                    console.error("Absolute path load failed:", errAbs);
+                }
+            }
+            if (storeInstance) {
+                setStore(storeInstance);
+            }
 
-            // 1. Retrieve the vault key from OS Keyring (Windows Credential Manager / Apple Keychain / Linux Secret Service)
+            // 1. Retrieve the vault key from OS Keyring (Windows Credential Manager / Apple Keychain / Linux / Android UID Sandbox)
             let keyStr = forcedKey;
             if (!keyStr) {
                 try {
@@ -163,7 +228,7 @@ export default function PassVault() {
 
             let isFirstLaunch = false;
             // 2. Migration: Check if legacy vault.json contains deviceKey
-            if (!keyStr) {
+            if (!keyStr && storeInstance) {
                 const legacyKey = await storeInstance.get("deviceKey");
                 if (legacyKey) {
                     // Migrate legacy key into OS Keyring!
@@ -186,12 +251,17 @@ export default function PassVault() {
                         isFirstLaunch = true;
                     }
                 }
-            } else {
+            } else if (storeInstance) {
                 // Ensure legacy deviceKey is not lingering in vault.json
                 if (await storeInstance.has("deviceKey")) {
                     await storeInstance.delete("deviceKey");
                     await storeInstance.save();
                 }
+            }
+
+            if (!keyStr) {
+                keyStr = await invoke("generate_vault_key");
+                await invoke("set_vault_key", { key: keyStr });
             }
 
             setVaultKey(keyStr);
@@ -208,24 +278,27 @@ export default function PassVault() {
             }
 
             // 3. Decrypt credentials with the OS-protected key
-            const encryptedCreds = await storeInstance.get("credentials");
-            if (encryptedCreds) {
-                try {
-                    const decrypted = await decryptData(encryptedCreds, keyStr);
-                    setCredentials(decrypted);
-                } catch (err) {
-                    console.error("Failed to decrypt credentials with key", err);
-                    setToast({
-                        message: t('status.decryptionError'),
-                        duration: 6000
-                    });
-                    setIsDecryptModalOpen(true);
+            if (storeInstance) {
+                const encryptedCreds = await storeInstance.get("credentials");
+                if (encryptedCreds) {
+                    try {
+                        const decrypted = await decryptData(encryptedCreds, keyStr);
+                        setCredentials(decrypted);
+                    } catch (err) {
+                        console.error("Failed to decrypt credentials with key", err);
+                        setToast({
+                            message: t('status.decryptionError'),
+                            duration: 6000
+                        });
+                        setIsDecryptModalOpen(true);
+                    }
+                } else {
+                    setCredentials([]);
                 }
-            } else {
-                setCredentials([]);
             }
         } catch (err) {
             console.error("Failed to init vault", err);
+            setToast({ message: "Init Vault Error: " + (err.message || err), duration: 4000 });
         }
     };
 
@@ -303,20 +376,36 @@ export default function PassVault() {
         }
     };
 
-    // Auto-Type: Focuses the target window and types username + password
+    // Auto-Type: Sends credentials via Bluetooth HID Keyboard (phone to PC) or OS simulator (desktop)
     const handleAutoType = async (cred) => {
         try {
+            const isBt = bluetoothStatus.isAvailable;
             setToast({
-                message: t('status.autoTyping'),
+                message: isBt && bluetoothStatus.connected
+                    ? `⚡ Typing to "${bluetoothStatus.deviceName || 'PC'}" via Bluetooth...`
+                    : t('status.autoTyping'),
                 duration: 4000
             });
 
-            await invoke("auto_type", {
-                username: cred.username || "",
-                password: cred.password || "",
-                connectionType: cred.connectionType || "web",
-                delayMs: 1500
-            });
+            if (isBt) {
+                // Wirelessly type to paired PC via Bluetooth HID Keyboard
+                await invoke("bluetooth_type_credentials", {
+                    payload: {
+                        username: cred.username || "",
+                        password: cred.password || "",
+                        connectionType: cred.connectionType || "web",
+                        interKeyDelayMs: cred.connectionType === "pam" ? 35 : 20
+                    }
+                });
+            } else {
+                // Desktop OS simulation
+                await invoke("auto_type", {
+                    username: cred.username || "",
+                    password: cred.password || "",
+                    connectionType: cred.connectionType || "web",
+                    delayMs: 1500
+                });
+            }
 
             setTimeout(() => {
                 setToast({ message: t('status.copied'), duration: 2500 });
@@ -571,9 +660,40 @@ export default function PassVault() {
 
     const handleSaveCredential = async (e) => {
         e.preventDefault();
-        if (!store || !vaultKey) return;
-
         try {
+            let currentStore = store;
+            if (!currentStore) {
+                try {
+                    currentStore = await load("vault.json", { autoSave: false });
+                } catch (_) {
+                    try {
+                        const dir = await appDataDir();
+                        const sep = dir.includes('/') ? '/' : '\\';
+                        currentStore = await load(`${dir}${sep}vault.json`, { autoSave: false });
+                    } catch (_) {}
+                }
+                if (currentStore) setStore(currentStore);
+            }
+
+            let currentKey = vaultKey;
+            if (!currentKey) {
+                try {
+                    currentKey = await invoke("get_vault_key");
+                } catch (_) {}
+                if (!currentKey) {
+                    try {
+                        currentKey = await invoke("generate_vault_key");
+                        await invoke("set_vault_key", { key: currentKey });
+                    } catch (_) {}
+                }
+                if (currentKey) setVaultKey(currentKey);
+            }
+
+            if (!currentStore || !currentKey) {
+                setToast({ message: "Unable to initialize vault storage.", duration: 3000 });
+                return;
+            }
+
             let updatedCreds;
             if (newCred.id) {
                 updatedCreds = credentials.map(c => c.id === newCred.id ? newCred : c);
@@ -582,9 +702,9 @@ export default function PassVault() {
                 updatedCreds = [...credentials, { ...newCred, id: newId }];
             }
 
-            const encrypted = await encryptData(updatedCreds, vaultKey);
-            await store.set("credentials", encrypted);
-            await store.save();
+            const encrypted = await encryptData(updatedCreds, currentKey);
+            await currentStore.set("credentials", encrypted);
+            await currentStore.save();
 
             setCredentials(updatedCreds);
             setIsAdding(false);
@@ -592,24 +712,36 @@ export default function PassVault() {
             setTimeout(() => setToast(null), 3000);
         } catch (err) {
             console.error("Failed to save credential", err);
+            setToast({ message: "Save failed: " + (err.message || err), duration: 4000 });
         }
     };
 
     const handleDelete = async (id) => {
         if (!window.confirm("Are you sure you want to delete this credential?")) return;
-        if (!store || !vaultKey) return;
-
         try {
+            let currentStore = store;
+            let currentKey = vaultKey;
+            if (!currentStore || !currentKey) {
+                try {
+                    currentStore = await load("vault.json", { autoSave: false });
+                } catch (_) {}
+                if (!currentKey) {
+                    currentKey = await invoke("get_vault_key");
+                }
+            }
+            if (!currentStore || !currentKey) return;
+
             const updatedCreds = credentials.filter(c => c.id !== id);
-            const encrypted = await encryptData(updatedCreds, vaultKey);
-            await store.set("credentials", encrypted);
-            await store.save();
+            const encrypted = await encryptData(updatedCreds, currentKey);
+            await currentStore.set("credentials", encrypted);
+            await currentStore.save();
 
             setCredentials(updatedCreds);
             setToast({ message: t('status.credentialDeleted'), duration: 3000 });
             setTimeout(() => setToast(null), 3000);
         } catch (err) {
             console.error("Failed to delete credential", err);
+            setToast({ message: "Delete failed: " + (err.message || err), duration: 4000 });
         }
     };
 
@@ -634,13 +766,33 @@ export default function PassVault() {
         }
     };
 
+    const handleBtClick = async () => {
+        try {
+            await invoke("bluetooth_request_permissions");
+            const status = await invoke("bluetooth_get_status");
+            if (status) {
+                setBluetoothStatus(prev => ({ ...prev, ...status, isAvailable: true }));
+            }
+        } catch (_) {}
+        alert(
+            "Bluetooth Auto-Type Instructions:\n\n" +
+            "1. Open Bluetooth Settings on this phone.\n" +
+            "2. Pair with your PC.\n" +
+            "3. Your PC will recognize this phone as a Bluetooth Keyboard.\n" +
+            "4. Click into any login box on your PC.\n" +
+            "5. Tap 'Auto-Type' (⚡) on any credential in PassVault to beam it wirelessly!"
+        );
+    };
+
     return (
         <div className="vault-container">
             <header className="vault-header">
                 <h4>
                     <span>&#128272;</span> {t('appTitle')}
                 </h4>
-                <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+
+                {/* Desktop Header Actions */}
+                <div className="desktop-header-actions" style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
                     <button className="add-button" style={{ background: '#107c41', display: 'flex', alignItems: 'center', gap: '2px' }} onClick={() => setIsRecoveryOpen(true)} title={t('recoveryModal.title')}>
                         {t('actions.recoveryKey')}
                     </button>
@@ -659,6 +811,24 @@ export default function PassVault() {
                     }}>
                         {t('actions.addCredential')}
                     </button>
+                    {/* Bluetooth HID Keyboard Status for Mobile / Desktop */}
+                    {bluetoothStatus.isAvailable && (
+                        <button
+                            className="add-button"
+                            onClick={handleBtClick}
+                            style={{
+                                background: bluetoothStatus.connected ? '#107c41' : '#c0392b',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                fontSize: '0.7rem'
+                            }}
+                            title={bluetoothStatus.connected ? `Bluetooth Keyboard connected to: ${bluetoothStatus.deviceName || 'PC'}` : "Bluetooth Keyboard disconnected. Tap to pair."}
+                        >
+                            <span>{bluetoothStatus.connected ? '🟢' : '🔴'}</span>
+                            <span>{bluetoothStatus.connected ? `BT: ${bluetoothStatus.deviceName || 'PC'}` : 'BT: Offline'}</span>
+                        </button>
+                    )}
                     {/* Language Selector Dropdown */}
                     <select
                         value={lang}
@@ -682,7 +852,104 @@ export default function PassVault() {
                         ))}
                     </select>
                 </div>
+
+                {/* Mobile Header Actions: Streamlined with BT indicator, + Add button, and Three-Bar Hamburger menu */}
+                <div className="mobile-header-actions">
+                    {bluetoothStatus.isAvailable && (
+                        <button
+                            className="btn-mobile-bt"
+                            onClick={handleBtClick}
+                            style={{ background: bluetoothStatus.connected ? '#107c41' : '#c0392b' }}
+                            title={bluetoothStatus.connected ? `Bluetooth Keyboard connected to: ${bluetoothStatus.deviceName || 'PC'}` : "Bluetooth Keyboard disconnected. Tap to pair."}
+                        >
+                            <span>{bluetoothStatus.connected ? '🟢' : '🔴'}</span>
+                            <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>{bluetoothStatus.connected ? (bluetoothStatus.deviceName || 'BT') : 'BT'}</span>
+                        </button>
+                    )}
+                    <button
+                        className="add-button"
+                        style={{ padding: '6px 10px', fontSize: '0.8rem' }}
+                        onClick={() => {
+                            setNewCred({ id: null, name: "", url: "", username: "", password: "", connectionType: "web", remarks: "", installPath: "" });
+                            setIsAdding(true);
+                        }}
+                        title={t('actions.addCredential')}
+                    >
+                        + {t('actions.addCredential')}
+                    </button>
+                    <button
+                        className="hamburger-button"
+                        onClick={() => setIsMobileMenuOpen(prev => !prev)}
+                        aria-label="Menu"
+                        title="Menu"
+                    >
+                        {isMobileMenuOpen ? '✕' : '☰'}
+                    </button>
+                </div>
+
+                {/* Mobile Dropdown Drawer */}
+                {isMobileMenuOpen && (
+                    <div className="mobile-menu-drawer">
+                        <button className="mobile-menu-item" onClick={() => { setIsRecoveryOpen(true); setIsMobileMenuOpen(false); }}>
+                            <span>🔑</span>
+                            <span>{t('actions.recoveryKey')}</span>
+                        </button>
+                        <button className="mobile-menu-item" onClick={() => { handleBackup(); setIsMobileMenuOpen(false); }}>
+                            <span>💾</span>
+                            <span>{t('actions.backup')}</span>
+                        </button>
+                        <button className="mobile-menu-item" onClick={() => { handleRestore(); setIsMobileMenuOpen(false); }}>
+                            <span>📂</span>
+                            <span>{t('actions.restore')}</span>
+                        </button>
+                        <button className="mobile-menu-item" onClick={() => { setIsAboutOpen(true); setIsMobileMenuOpen(false); }}>
+                            <span>ℹ️</span>
+                            <span>{t('actions.about')}</span>
+                        </button>
+                        <div style={{ padding: '6px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid #eee', marginTop: '4px' }}>
+                            <span style={{ fontSize: '0.8rem', color: '#666' }}>🌐 Language</span>
+                            <select
+                                value={lang}
+                                onChange={(e) => {
+                                    setLanguage(e.target.value);
+                                    setIsMobileMenuOpen(false);
+                                }}
+                                style={{
+                                    padding: '4px 8px',
+                                    borderRadius: '6px',
+                                    border: '1px solid #ccc',
+                                    background: 'white',
+                                    fontSize: '0.75rem',
+                                    cursor: 'pointer'
+                                }}
+                            >
+                                {languages.map(l => (
+                                    <option key={l.code} value={l.code}>
+                                        {l.native}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                    </div>
+                )}
             </header>
+
+            {/* Mobile Menu Backdrop */}
+            {isMobileMenuOpen && (
+                <div
+                    className="mobile-menu-backdrop"
+                    onClick={() => setIsMobileMenuOpen(false)}
+                    style={{
+                        position: 'fixed',
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        zIndex: 999,
+                        background: 'rgba(0,0,0,0.1)'
+                    }}
+                />
+            )}
 
             <div className="search-container" style={{ position: 'relative' }}>
                 <input
@@ -787,7 +1054,7 @@ export default function PassVault() {
                                         title={`⚡ ${t('actions.autoType')}: ${cred.connectionType === 'putty' || cred.connectionType === 'powershell' ? 'Terminal (Enter)' : cred.connectionType === 'pam' ? 'PAM (Paced)' : 'Web (Tab)'}`}
                                     >
                                         <span className="btn-icon">⚡</span>
-                                        <span className="btn-label">{t('actions.autoType')}</span>
+                                        <span className="btn-label">{bluetoothStatus.isAvailable && bluetoothStatus.connected ? 'BT Type' : t('actions.autoType')}</span>
                                     </button>
                                 )}
                                 {cred.username && cred.password && (
