@@ -10,6 +10,41 @@ import About from "./About";
 import { useI18n } from "../i18n";
 import './PassVault.css';
 
+// --- Paste-once clipboard ---
+// On Windows the Rust side clears the clipboard as soon as the text is pasted
+// (or after 15s) and emits a "secure-clipboard" event. Elsewhere, fall back to a timed clear.
+const clipboardHandlers = new Map();
+let clipboardListener = null;
+let clipboardTimer = null;
+
+async function copySecret(text, onExpired, onPasted = onExpired) {
+    clipboardListener ??= listen("secure-clipboard", ({ payload }) => {
+        const h = clipboardHandlers.get(payload.token);
+        clipboardHandlers.delete(payload.token);
+        if (payload.status === "pasted") h?.onPasted();
+        else if (payload.status === "expired") h?.onExpired();
+    });
+    await clipboardListener;
+    clearTimeout(clipboardTimer);
+
+    const token = await invoke("secure_copy", { text, timeoutMs: 15000 }).catch(() => null);
+    if (token != null) {
+        clipboardHandlers.set(token, { onPasted, onExpired });
+        return true;
+    }
+
+    await writeText(text);
+    clipboardTimer = setTimeout(async () => {
+        try {
+            await clear();
+        } catch (e) {
+            console.error("Failed to clear clipboard", e);
+        }
+        onExpired();
+    }, 15000);
+    return false;
+}
+
 // --- Web Crypto Helpers ---
 async function getEncryptionKey(deviceKey) {
     const enc = new TextEncoder();
@@ -307,26 +342,24 @@ export default function PassVault() {
             const textToCopy = type === 'username' ? cred.username : type === 'password' ? cred.password : cred.url;
             if (!textToCopy) return;
 
-            await writeText(textToCopy);
+            const done = () => {
+                setCopiedId(null);
+                setToast(null);
+            };
+
+            if (type === 'url') {
+                await writeText(textToCopy);
+                setTimeout(done, 3000);
+            } else {
+                // Username/password: cleared from the clipboard once pasted, or after 15s
+                await copySecret(textToCopy, done);
+            }
 
             setCopiedId(`${cred.id}-${type}`);
             setToast({
                 message: type === 'username' ? t('status.usernameCopied') : type === 'password' ? t('status.passwordCopied') : t('status.urlCopied'),
-                duration: type === 'password' ? 15000 : 3000
+                duration: type === 'url' ? 3000 : 15000
             });
-
-            // Clear clipboard after 15 seconds if it's a password
-            setTimeout(async () => {
-                setCopiedId(null);
-                setToast(null);
-                if (type === 'password') {
-                    try {
-                        await clear();
-                    } catch (e) {
-                        console.error("Failed to clear clipboard", e);
-                    }
-                }
-            }, 15000);
 
         } catch (err) {
             console.error(`Failed to copy ${type}`, err);
@@ -334,41 +367,46 @@ export default function PassVault() {
         }
     };
 
-    // Sequential Copy: Copies username, waits 5s, then automatically copies password
+    // Sequential Copy: Copies username, then the password once the username is pasted
+    // (or after 5s where paste detection isn't available)
     const handleCopyBoth = async (cred) => {
         try {
             if (!cred.username && !cred.password) return;
 
-            if (cred.username) {
-                await writeText(cred.username);
-                setCopiedId(`${cred.id}-both-user`);
-                setToast({
-                    message: `1/2: ${t('status.usernameCopied')}! ${t('status.passReady')} in 5s...`,
-                    duration: 5000
-                });
+            const done = () => {
+                setCopiedId(null);
+                setToast(null);
+            };
+
+            const copyPassword = async () => {
+                try {
+                    await copySecret(cred.password, done);
+                    setCopiedId(`${cred.id}-both-pass`);
+                    setToast({
+                        message: `2/2: ${t('status.passwordCopied')}`,
+                        duration: 15000
+                    });
+                } catch (e) {
+                    console.error("Failed in sequential copy step 2", e);
+                }
+            };
+
+            if (!cred.username) {
+                await copyPassword();
+                return;
             }
 
-            if (cred.password) {
-                setTimeout(async () => {
-                    try {
-                        await writeText(cred.password);
-                        setCopiedId(`${cred.id}-both-pass`);
-                        setToast({
-                            message: `2/2: ${t('status.passwordCopied')}`,
-                            duration: 15000
-                        });
+            const pasteOnce = await copySecret(cred.username, done, cred.password ? copyPassword : done);
+            setCopiedId(`${cred.id}-both-user`);
+            setToast({
+                message: pasteOnce
+                    ? `1/2: ${t('status.usernameCopied')}`
+                    : `1/2: ${t('status.usernameCopied')}! ${t('status.passReady')} in 5s...`,
+                duration: pasteOnce ? 15000 : 5000
+            });
 
-                        setTimeout(async () => {
-                            setCopiedId(null);
-                            setToast(null);
-                            try {
-                                await clear();
-                            } catch (e) {}
-                        }, 15000);
-                    } catch (e) {
-                        console.error("Failed in sequential copy step 2", e);
-                    }
-                }, 5000);
+            if (!pasteOnce && cred.password) {
+                setTimeout(copyPassword, 5000);
             }
         } catch (err) {
             console.error("Failed in handleCopyBoth", err);

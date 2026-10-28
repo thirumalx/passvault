@@ -32,6 +32,7 @@ dependencies = [
  "unicode-normalization",
  "uuid",
  "whoami",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
