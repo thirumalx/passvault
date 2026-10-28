@@ -36,11 +36,11 @@ $env:ANDROID_HOME = $ANDROID_HOME
 $env:ANDROID_SDK_ROOT = $ANDROID_HOME
 $env:GRADLE_USER_HOME = $GRADLE_HOME
 $env:PATH = "$JAVA_HOME\bin;$ANDROID_HOME\platform-tools;$NODE_PATH;$env:PATH"
-.\gradlew.bat --no-watch-fs --no-daemon assembleArm64Debug
+.\gradlew.bat --no-watch-fs --no-daemon assembleArm64Release
 
 Write-Host "`n=== Step 5: Copying APK to Project Root ===" -ForegroundColor Cyan
-$sourceApk = "$PROJECT_ROOT\src-tauri\gen\android\app\build\outputs\apk\arm64\debug\app-arm64-debug.apk"
-$destApk = "$PROJECT_ROOT\PassVault-Bluetooth-AutoType-arm64-debug.apk"
+$sourceApk = "$PROJECT_ROOT\src-tauri\gen\android\app\build\outputs\apk\arm64\release\app-arm64-release.apk"
+$destApk = "$PROJECT_ROOT\PassVault-Bluetooth-AutoType-arm64-release.apk"
 Copy-Item $sourceApk $destApk -Force
 
 Write-Host "`n========================================================" -ForegroundColor Green
