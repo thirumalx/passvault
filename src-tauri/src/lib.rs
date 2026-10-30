@@ -2,6 +2,7 @@ mod share;
 mod keystore;
 mod autotype;
 mod bluetooth;
+mod secure_clipboard;
 use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -41,6 +42,7 @@ pub fn run() {
             keystore::normalize_recovery_key,
             keystore::derive_passphrase_key,
             autotype::auto_type,
+            secure_clipboard::secure_copy,
             bluetooth::bluetooth_get_status,
             bluetooth::bluetooth_request_permissions,
             bluetooth::bluetooth_type_credentials
